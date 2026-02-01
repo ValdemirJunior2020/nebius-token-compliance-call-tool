@@ -344,7 +344,7 @@ export default function App() {
     {
       id: genId(),
       role: "assistant",
-      text: "Hi! Ask me about a guest situation and I'll check the Service Matrix.\n\nTip: Toggle document chips below to select which guidelines to use.",
+      text: "Happy Valentine’s Day! 💝 Share a guest situation and I’ll guide you through the correct Service Matrix procedure.",
       ts: Date.now(),
     },
   ]);
