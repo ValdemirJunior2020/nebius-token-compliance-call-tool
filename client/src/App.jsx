@@ -4,7 +4,7 @@ import "./App.css";
 
 // LOCAL TESTING: http://localhost:5050
 // PRODUCTION: https://your-render-app.onrender.com
-const API_BASE = "http://localhost:5050";
+const API_BASE = "https://nebius-token-compliance-call-tool.onrender.com";
 
 // public assets
 const LOADING_GIF_SRC = "/loading.gif";
