@@ -6,6 +6,12 @@ import "./App.css";
 // PRODUCTION: https://your-render-app.onrender.com
 const API_BASE = "https://nebius-token-compliance-call-tool.onrender.com";
 
+// ✅ UI label for your cloud model (you are using Claude)
+const CLOUD_PROVIDER_LABEL = "Claude";
+
+// ✅ INPUT LIMIT (saves money by preventing huge prompts)
+const MAX_USER_INPUT_CHARS = 1200;
+
 // public assets
 const LOADING_GIF_SRC = "/loading.gif";
 const NAV_LOGO_VIDEO_SRC = "/Video_Generation_Confirmation.mp4";
@@ -19,29 +25,69 @@ const MATRIX_PUBLIC_PATH = "/Service Matrix's 2026.xlsx";
 const TRAINING_GUIDE_TXT_PATH = "/training_guide.txt";
 const TRAINING_GUIDE_CHUNKS_PATH = "/training_guide.chunks.jsonl";
 
+// --- QA Master Intro (fixed text) --------------------------------------------
+const QA_MASTER_INTRO = `I'm ready to assist as QA Master.
+
+Please provide the guest situation or agent question so I can give you the exact compliant procedure.
+
+Examples of what I can help with:
+
+"Guest says their reservation is not found at check-in"
+"Caller wants to change the name on their booking"
+"Guest is being walked due to overbooking"
+"How should I open the call correctly?"
+"Guest wants a refund for incorrect dates"
+What is the scenario you need guidance on?`;
+
 // --- logging ----------------------------------------------------------------
 const DEBUG = true;
-function log(...args) { if (!DEBUG) return; console.log("[CC]", ...args); }
-function warn(...args) { if (!DEBUG) return; console.warn("[CC]", ...args); }
-function errlog(...args) { if (!DEBUG) return; console.error("[CC]", ...args); }
+function log(...args) {
+  if (!DEBUG) return;
+  console.log("[CC]", ...args);
+}
+function warn(...args) {
+  if (!DEBUG) return;
+  console.warn("[CC]", ...args);
+}
+function errlog(...args) {
+  if (!DEBUG) return;
+  console.error("[CC]", ...args);
+}
 
 // --- utils -------------------------------------------------------------------
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 function genId() {
-  try { return crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(16).slice(2)}`; } 
-  catch { return `${Date.now()}-${Math.random().toString(16).slice(2)}`; }
+  try {
+    return crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  } catch {
+    return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  }
 }
 function nowIso() {
-  try { return new Date().toISOString(); } catch { return String(Date.now()); }
+  try {
+    return new Date().toISOString();
+  } catch {
+    return String(Date.now());
+  }
 }
 function safeString(v) {
   if (v == null) return "";
   if (typeof v === "string") return v;
-  try { return JSON.stringify(v, null, 2); } catch { return String(v); }
+  try {
+    return JSON.stringify(v, null, 2);
+  } catch {
+    return String(v);
+  }
 }
-function normalizeWs(s) { return safeString(s).replace(/\r\n/g, "\n").replace(/\u0000/g, "").trim(); }
-function clamp(n, a, b) { return Math.max(a, Math.min(b, n)); }
-function isAbort(error) { return error?.name === "AbortError" || /aborted/i.test(String(error?.message || "")); }
+function normalizeWs(s) {
+  return safeString(s).replace(/\r\n/g, "\n").replace(/\u0000/g, "").trim();
+}
+function clamp(n, a, b) {
+  return Math.max(a, Math.min(b, n));
+}
+function isAbort(error) {
+  return error?.name === "AbortError" || /aborted/i.test(String(error?.message || ""));
+}
 function asHumanError(error) {
   const msg = String(error?.message || error || "");
   return msg.length > 900 ? msg.slice(0, 900) + "…" : msg;
@@ -62,7 +108,9 @@ async function fetchWithTimeout(url, options = {}, timeoutMs = 45000) {
     const res = await fetch(url, { ...options, signal: ctrl.signal });
     log("fetchWithTimeout <-", { url, status: res.status, ok: res.ok });
     return res;
-  } finally { clearTimeout(t); }
+  } finally {
+    clearTimeout(t);
+  }
 }
 
 async function postToAnyEndpoint({ base, paths, payload, timeoutMs }) {
@@ -106,12 +154,17 @@ async function postToAnyEndpoint({ base, paths, payload, timeoutMs }) {
 function pickAnswerFromBody(body) {
   if (body == null) return "";
   if (typeof body === "string") return body;
-  // Handle Kimi server response format: {ok: true, answer: "..."}
-  if (body.ok && body.answer) return body.answer;
-  
+
   const candidates = [
-    body.answer, body.text, body.message, body.result, body.output, body.content,
-    body?.data?.answer, body?.data?.text, body?.data?.message,
+    body.answer,
+    body.text,
+    body.message,
+    body.result,
+    body.output,
+    body.content,
+    body?.data?.answer,
+    body?.data?.text,
+    body?.data?.message,
   ];
   for (const c of candidates) {
     const s = normalizeWs(c);
@@ -125,11 +178,15 @@ function tryLoadLocal(key, fallback) {
     const raw = localStorage.getItem(key);
     const v = raw == null ? fallback : JSON.parse(raw);
     return v;
-  } catch (e) { return fallback; }
+  } catch (e) {
+    return fallback;
+  }
 }
 
 function trySaveLocal(key, value) {
-  try { localStorage.setItem(key, JSON.stringify(value)); } catch (e) {}
+  try {
+    localStorage.setItem(key, JSON.stringify(value));
+  } catch (e) {}
 }
 
 function useAutoResizeTextarea(ref, value) {
@@ -148,8 +205,12 @@ class ErrorBoundary extends React.Component {
     super(props);
     this.state = { hasError: false, error: null };
   }
-  static getDerivedStateFromError(error) { return { hasError: true, error }; }
-  componentDidCatch(error, info) { errlog("ErrorBoundary:", error, info); }
+  static getDerivedStateFromError(error) {
+    return { hasError: true, error };
+  }
+  componentDidCatch(error, info) {
+    errlog("ErrorBoundary:", error, info);
+  }
   render() {
     if (!this.state.hasError) return this.props.children;
     return (
@@ -159,7 +220,13 @@ class ErrorBoundary extends React.Component {
             <div className="cc-bannerError">
               <div style={{ fontWeight: 700 }}>🚨 UI Error</div>
               <div className="cc-bannerSub">Refresh to fix.</div>
-              <button className="cc-sendBtn" onClick={() => window.location.reload()} style={{ marginTop: 10 }}>Reload</button>
+              <button
+                className="cc-sendBtn"
+                onClick={() => window.location.reload()}
+                style={{ marginTop: 10 }}
+              >
+                Reload
+              </button>
             </div>
           </div>
         </div>
@@ -209,7 +276,7 @@ Frontend tried: ${attemptedPath || "(unknown path)"}
 
 Fix:
 1) Check that server.js has the route: app.post("/api/claude", ...)
-2) Verify API_BASE in App.jsx matches your server URL
+2) Verify API_BASE in App.js matches your server URL
 3) Try: ${base}/health (should return JSON)
 
 Current API_BASE: ${apiBase}
@@ -221,26 +288,22 @@ function isNoCreditsError(e) {
   const rawBody = safeString(e?.body);
   const msg = String(e?.message || "");
   const hay = (msg + "\n" + rawBody).toLowerCase();
-  
-  // Kimi credit error indicators
-  const hit = hay.includes("credit") || hay.includes("billing") || hay.includes("余额") || 
-              hay.includes("insufficient") || (status === 402);
+  const hit =
+    hay.includes("credit") ||
+    hay.includes("billing") ||
+    hay.includes("余额") ||
+    hay.includes("insufficient") ||
+    status === 402;
   return hit && (status === 400 || status === 402 || status === 403);
 }
 
 function buildNoCreditsMessage() {
   return normalizeWs(`
-💳 No credits available for Kimi (Moonshot AI).
-
-What happened:
-- Your KIMI_API_KEY is valid, but the account has no credits balance.
+💳 No credits available.
 
 Fix:
-1) Go to https://platform.moonshot.cn/
-2) Top up your balance (充值)
-3) Restart the server
-
-After adding credits, the app will work normally.
+1) Check your AI provider billing / credits
+2) Restart the server after updating credentials
 `);
 }
 
@@ -261,16 +324,26 @@ function MessageBubble({ m, isIntro }) {
       <div className={`cc-bubble ${isAssistant ? "cc-bubbleAssistant" : ""}`}>
         {m.kind === "loading" ? (
           <div className="cc-loadingWrap">
-            <img className="cc-loadingGif" src={LOADING_GIF_SRC} alt="loading" 
-              onError={(e) => { e.currentTarget.src = "https://media.tenor.com/e_E1hMZnbdAAAAAi/meme-coffee.gif"; }} />
-            <div className="cc-thinking">{m.thinkingText || "Thinking with Kimi AI…"}</div>
+            <img
+              className="cc-loadingGif"
+              src={LOADING_GIF_SRC}
+              alt="loading"
+              onError={(e) => {
+                e.currentTarget.src = "https://media.tenor.com/e_E1hMZnbdAAAAAi/meme-coffee.gif";
+              }}
+            />
+            <div className="cc-thinking">{m.thinkingText || `Thinking with ${CLOUD_PROVIDER_LABEL}…`}</div>
           </div>
         ) : m.kind === "error401" ? (
           <div className="cc-loadingWrap">
             <video className="cc-errorVideo" autoPlay loop muted playsInline src={ERROR_VIDEO_SRC} />
             <div className="cc-errorHint">
-              <div className="cc-error" style={{ textAlign: "center" }}>🔒 Unauthorized (401)</div>
-              <div className="cc-bannerSub" style={{ textAlign: "center" }}>Check KIMI_API_KEY on server.</div>
+              <div className="cc-error" style={{ textAlign: "center" }}>
+                🔒 Unauthorized (401)
+              </div>
+              <div className="cc-bannerSub" style={{ textAlign: "center" }}>
+                Check your server API key / auth.
+              </div>
               {m.text ? <pre className="cc-error" style={{ marginTop: 10 }}>{normalizeWs(m.text)}</pre> : null}
             </div>
           </div>
@@ -280,8 +353,9 @@ function MessageBubble({ m, isIntro }) {
           <div className="cc-loadingWrap">
             <video className="cc-errorVideo" autoPlay loop muted playsInline src={ERROR_VIDEO_SRC} />
             <div className="cc-errorHint">
-              <div className="cc-error" style={{ textAlign: "center" }}>💳 Kimi AI credits empty.</div>
-              <div className="cc-bannerSub" style={{ textAlign: "center" }}>Add credits at platform.moonshot.cn</div>
+              <div className="cc-error" style={{ textAlign: "center" }}>
+                💳 Credits / billing issue.
+              </div>
               {m.text ? <pre className="cc-error" style={{ marginTop: 10 }}>{normalizeWs(m.text)}</pre> : null}
             </div>
           </div>
@@ -305,13 +379,22 @@ function ResourcePopover({ open, onClose }) {
       <div className="cc-popover" role="dialog" aria-modal="true">
         <div className="cc-popoverHeader">
           <div className="cc-popoverTitle">Resources</div>
-          <button className="cc-pillBtn cc-pillBtnGhost" onClick={onClose} type="button" aria-label="Close">✕</button>
+          <button className="cc-pillBtn cc-pillBtnGhost" onClick={onClose} type="button" aria-label="Close">
+            ✕
+          </button>
         </div>
         <div className="cc-popoverBody">
           <div className="cc-popoverHint">Download compliance files:</div>
           <div className="cc-resourceList">
             {RESOURCES.map((r) => (
-              <a key={r.href} className="cc-resourceItem" href={r.href} download={r.fileName} target="_blank" rel="noreferrer">
+              <a
+                key={r.href}
+                className="cc-resourceItem"
+                href={r.href}
+                download={r.fileName}
+                target="_blank"
+                rel="noreferrer"
+              >
                 <div className="cc-resourceName">{r.label}</div>
                 <div className="cc-resourceSub">{r.fileName}</div>
               </a>
@@ -331,7 +414,10 @@ export default function App() {
   const [mode, setMode] = useState(() => tryLoadLocal("cc_mode", "cloud"));
   const [docs, setDocs] = useState(() => tryLoadLocal("cc_docs", DEFAULT_DOCS));
   const [docAvail, setDocAvail] = useState(() =>
-    DOC_META.reduce((acc, d) => { acc[d.key] = true; return acc; }, {})
+    DOC_META.reduce((acc, d) => {
+      acc[d.key] = true;
+      return acc;
+    }, {})
   );
 
   const [input, setInput] = useState("");
@@ -344,14 +430,17 @@ export default function App() {
     {
       id: genId(),
       role: "assistant",
-      text: "Share a guest situation and I’ll guide you through the correct Service Matrix procedure.",
+      text: QA_MASTER_INTRO,
       ts: Date.now(),
     },
   ]);
 
   useAutoResizeTextarea(textareaRef, input);
 
-  const firstAssistantId = useMemo(() => messages.find((x) => x.role === "assistant")?.id ?? null, [messages]);
+  const firstAssistantId = useMemo(
+    () => messages.find((x) => x.role === "assistant")?.id ?? null,
+    [messages]
+  );
 
   const activeDocsLabel = useMemo(() => {
     const enabled = DOC_META.filter((d) => docs[d.key]).map((d) => d.label);
@@ -364,7 +453,9 @@ export default function App() {
     el.scrollIntoView({ behavior: "smooth", block: "end" });
   }, []);
 
-  useEffect(() => { scrollToBottom(); }, [messages, scrollToBottom]);
+  useEffect(() => {
+    scrollToBottom();
+  }, [messages, scrollToBottom]);
   useEffect(() => trySaveLocal("cc_mode", mode), [mode]);
   useEffect(() => trySaveLocal("cc_docs", docs), [docs]);
 
@@ -412,11 +503,21 @@ export default function App() {
   const clearInput = useCallback(() => {
     setInput("");
     textareaRef.current?.focus?.();
+    setBanner(null);
   }, []);
 
   const send = useCallback(async () => {
     const question = normalizeWs(input);
     if (!question || isSending) return;
+
+    if (question.length > MAX_USER_INPUT_CHARS) {
+      setBanner({
+        type: "error",
+        title: "✂️ Message too long",
+        sub: `Please keep your message under ${MAX_USER_INPUT_CHARS} characters.`,
+      });
+      return;
+    }
 
     const enabledCount = DOC_META.reduce((n, d) => n + (docs[d.key] ? 1 : 0), 0);
     if (enabledCount === 0) {
@@ -432,26 +533,36 @@ export default function App() {
       role: "assistant",
       kind: "loading",
       text: "",
-      thinkingText: "Analyzing with Kimi AI…",
+      thinkingText: `Analyzing with ${CLOUD_PROVIDER_LABEL}…`,
       ts: Date.now(),
     });
 
     setInput("");
-    const payload = buildPayload({ question, mode, docs: { ...docs, _availability: docAvail, _activeDocsLabel: activeDocsLabel } });
-    const endpoints = ["/api/claude"];
+    const payload = buildPayload({
+      question,
+      mode,
+      docs: { ...docs, _availability: docAvail, _activeDocsLabel: activeDocsLabel },
+    });
 
+    // ✅ You are calling Claude endpoint
+    const endpoints = ["/api/claude"];
 
     try {
       const result = await postToAnyEndpoint({ base: API_BASE, paths: endpoints, payload, timeoutMs: 65000 });
       const answerText = pickAnswerFromBody(result?.body);
       const finalText = normalizeWs(answerText) || "No answer returned.";
-      
+
       replaceLastAssistant({
         kind: undefined,
         text: finalText,
         ts: Date.now(),
-        meta: { endpoint: result?.path, status: result?.status, provider: result?.body?.provider || "kimi" },
+        meta: {
+          endpoint: result?.path,
+          status: result?.status,
+          provider: result?.body?.provider || "claude",
+        },
       });
+
       setHealth((h) => ({ ...h, ok: true, last: Date.now() }));
     } catch (e) {
       errlog("send() error:", e);
@@ -466,25 +577,40 @@ export default function App() {
       } else if (isNoCreditsError(e)) {
         const noCreditsText = buildNoCreditsMessage();
         replaceLastAssistant({ kind: "errorNoCredits", text: noCreditsText, ts: Date.now(), meta: { status, endpoint: e?.path } });
-        setBanner({ type: "error", title: "💳 Kimi credits empty", sub: "Add credits at platform.moonshot.cn" });
+        setBanner({ type: "error", title: "💳 Credits / billing issue", sub: "Check provider billing/credits." });
       } else {
-        const friendly = status === 429 ? "⏳ Rate limit (429)." : status === 413 ? "📦 Request too large (413)." : 
-                        isAbort(e) ? "⏱️ Timed out." : status ? `⚠️ Server error (HTTP ${status}).` : "⚠️ Network error.";
+        const friendly =
+          status === 429
+            ? "⏳ Rate limit (429)."
+            : status === 413
+            ? "📦 Request too large (413)."
+            : isAbort(e)
+            ? "⏱️ Timed out."
+            : status
+            ? `⚠️ Server error (HTTP ${status}).`
+            : "⚠️ Network error.";
+
         replaceLastAssistant({ kind: "error", text: `${friendly}\n\n${normalizeWs(e?.message || asHumanError(e))}`, ts: Date.now() });
         setBanner({ type: "error", title: "🧯 Error", sub: normalizeWs(e?.message || asHumanError(e)) });
       }
+
       setHealth((h) => ({ ...h, ok: false, last: Date.now() }));
     } finally {
       setIsSending(false);
     }
   }, [input, isSending, docs, mode, addMessage, replaceLastAssistant, docAvail, activeDocsLabel]);
 
-  const onKeyDown = useCallback((e) => {
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
-      send();
-    }
-  }, [send]);
+  const onKeyDown = useCallback(
+    (e) => {
+      if (e.key === "Enter" && !e.shiftKey) {
+        e.preventDefault();
+        send();
+      }
+    },
+    [send]
+  );
+
+  const remainingChars = MAX_USER_INPUT_CHARS - (input?.length || 0);
 
   return (
     <ErrorBoundary>
@@ -493,7 +619,11 @@ export default function App() {
         <div className="cc-topbar">
           <div className="cc-navPill">
             <img className="cc-navLogo" src="/HP-logo-gold.png" alt="HotelPlanner" />
-            <button className={`cc-navItem ${resourcesOpen ? "cc-navItemPill is-active" : ""}`} type="button" onClick={() => setResourcesOpen(true)}>
+            <button
+              className={`cc-navItem ${resourcesOpen ? "cc-navItemPill is-active" : ""}`}
+              type="button"
+              onClick={() => setResourcesOpen(true)}
+            >
               Resources
             </button>
             <div className="cc-navTitle">Call Center Compliance Tool</div>
@@ -516,11 +646,18 @@ export default function App() {
 
               <div className="cc-hero">
                 <div className="cc-heroTitle">
-                  Mode: <b>{mode === "cloud" ? "Kimi AI" : "Local"}</b> • Docs: <b>{activeDocsLabel}</b>
+                  Mode: <b>{mode === "cloud" ? CLOUD_PROVIDER_LABEL : "Local"}</b> • Docs: <b>{activeDocsLabel}</b>
                 </div>
                 <div className="cc-heroSub">
-                  Server: <span style={{ fontWeight: 700 }}>{health.ok == null ? "checking…" : health.ok ? "online" : "offline"}</span>
-                  {health.last ? <span style={{ marginLeft: 8, color: "rgba(17,24,39,0.45)", fontSize: 12 }}>({new Date(health.last).toLocaleTimeString()})</span> : null}
+                  Server:{" "}
+                  <span style={{ fontWeight: 700 }}>
+                    {health.ok == null ? "checking…" : health.ok ? "online" : "offline"}
+                  </span>
+                  {health.last ? (
+                    <span style={{ marginLeft: 8, color: "rgba(17,24,39,0.45)", fontSize: 12 }}>
+                      ({new Date(health.last).toLocaleTimeString()})
+                    </span>
+                  ) : null}
                 </div>
               </div>
 
@@ -572,18 +709,38 @@ export default function App() {
                 ref={textareaRef}
                 className="cc-textarea"
                 value={input}
-                placeholder="Describe the guest situation… (Enter to send)"
-                onChange={(e) => setInput(e.target.value)}
+                placeholder={`Describe the guest situation… (max ${MAX_USER_INPUT_CHARS} chars)`}
+                onChange={(e) => {
+                  const next = e.target.value || "";
+                  if (next.length <= MAX_USER_INPUT_CHARS) {
+                    setInput(next);
+                    if (banner?.title === "✂️ Message too long") setBanner(null);
+                  } else {
+                    setInput(next.slice(0, MAX_USER_INPUT_CHARS));
+                    setBanner({
+                      type: "error",
+                      title: "✂️ Message too long",
+                      sub: `Max ${MAX_USER_INPUT_CHARS} characters. Your text was trimmed.`,
+                    });
+                  }
+                }}
                 onKeyDown={onKeyDown}
                 disabled={isSending}
                 spellCheck
               />
 
-              <button className="cc-sendBtn" type="button" onClick={clearInput} disabled={isSending || !input.trim()} title="Clear">✕</button>
-              <button className="cc-sendBtn" type="button" onClick={send} disabled={isSending || !input.trim()} title="Send">➤</button>
+              <button className="cc-sendBtn" type="button" onClick={clearInput} disabled={isSending || !input.trim()} title="Clear">
+                ✕
+              </button>
+              <button className="cc-sendBtn" type="button" onClick={send} disabled={isSending || !input.trim()} title="Send">
+                ➤
+              </button>
             </div>
 
-            <div className="cc-footer-note">Powered by Kimi AI (Moonshot) • Select documents for context</div>
+            <div className="cc-footer-note">
+              Powered by {CLOUD_PROVIDER_LABEL} • Select documents for context •{" "}
+              <span style={{ fontWeight: 700 }}>{remainingChars}</span> chars left
+            </div>
           </div>
         </div>
       </div>
