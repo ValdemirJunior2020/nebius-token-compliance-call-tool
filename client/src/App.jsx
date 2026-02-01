@@ -344,7 +344,7 @@ export default function App() {
     {
       id: genId(),
       role: "assistant",
-      text: "Happy Valentine’s Day! 💝 Share a guest situation and I’ll guide you through the correct Service Matrix procedure.",
+      text: "Share a guest situation and I’ll guide you through the correct Service Matrix procedure.",
       ts: Date.now(),
     },
   ]);
