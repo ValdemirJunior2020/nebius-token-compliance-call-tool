@@ -1,6 +1,5 @@
-// server/server.js - Supports Kimi, Anthropic, and Nebius (FIXED CORS + Frontend URL handling)
+// server/server.js - Anthropic (Claude) + Excel docs + FIXED CORS + timeoutPromise
 import express from "express";
-import cors from "cors";
 import dotenv from "dotenv";
 import path from "path";
 import { fileURLToPath } from "url";
@@ -15,8 +14,8 @@ dotenv.config({ path: path.join(process.cwd(), ".env") });
 const app = express();
 
 const PORT = Number(process.env.PORT || 5050);
-const DEBUG = process.env.DEBUG === "true";
-const AI_PROVIDER = (process.env.AI_PROVIDER || "nebius").toLowerCase();
+const DEBUG = String(process.env.DEBUG || "false").toLowerCase() === "true";
+const AI_PROVIDER = String(process.env.AI_PROVIDER || "anthropic").toLowerCase();
 
 const NEBIUS_API_KEY = process.env.NEBIUS_API_KEY || "";
 const KIMI_API_KEY = process.env.KIMI_API_KEY || "";
@@ -34,27 +33,22 @@ const errlog = (...a) => console.error("[server]", ...a);
 let DOCUMENT_CACHE = {};
 let LAST_LOAD = 0;
 
-/**
- * IMPORTANT:
- * Your browser is showing "Failed to fetch" even though Render logs look fine.
- * That is almost always CORS blocking your Netlify domain.
- *
- * Set this in Render:
- * FRONTEND_URLS=https://nebius-api-call-compliance-tool.netlify.app,https://qa-tool-managment.netlify.app
- *
- * Or leave it and we allow *.netlify.app anyway.
- */
+// -------------------- CORS (FIXED) --------------------
+// IMPORTANT: If CORS fails, the browser shows "No Access-Control-Allow-Origin"
+// and your frontend "fails to fetch" even if the server is up.
+// This middleware ALWAYS returns proper CORS headers for allowed origins,
+// including during OPTIONS preflight.
 const FRONTEND_URLS = String(
   process.env.FRONTEND_URLS ||
     process.env.FRONTEND_URL ||
     "https://nebius-api-call-compliance-tool.netlify.app"
 )
   .split(",")
-  .map((s) => s.trim())
+  .map((s) => s.trim().replace(/\/+$/, ""))
   .filter(Boolean);
 
 const FRONTEND_URL_DEV =
-  process.env.FRONTEND_URL_DEV || "http://localhost:5173";
+  (process.env.FRONTEND_URL_DEV || "http://localhost:5173").replace(/\/+$/, "");
 
 const ALLOWED_ORIGINS = new Set([
   ...FRONTEND_URLS,
@@ -72,25 +66,45 @@ function isNetlifySubdomain(origin) {
   }
 }
 
-app.use(
-  cors({
-    origin: (origin, cb) => {
-      // allow server-to-server, curl, health monitors
-      if (!origin) return cb(null, true);
+app.use((req, res, next) => {
+  const origin = req.headers.origin;
 
-      if (ALLOWED_ORIGINS.has(origin)) return cb(null, true);
-      if (isNetlifySubdomain(origin)) return cb(null, true);
+  // allow server-to-server, curl, health monitors
+  if (!origin) return next();
 
-      return cb(new Error(`CORS blocked origin: ${origin}`), false);
-    },
-    methods: ["GET", "POST", "OPTIONS"],
-    credentials: true,
-  })
-);
+  const cleanOrigin = String(origin).replace(/\/+$/, "");
+  const ok = ALLOWED_ORIGINS.has(cleanOrigin) || isNetlifySubdomain(cleanOrigin);
 
-app.options("*", cors());
+  if (ok) {
+    res.setHeader("Access-Control-Allow-Origin", cleanOrigin);
+    res.setHeader("Vary", "Origin");
+    res.setHeader("Access-Control-Allow-Credentials", "true");
+    res.setHeader("Access-Control-Allow-Methods", "GET,POST,OPTIONS");
+    res.setHeader(
+      "Access-Control-Allow-Headers",
+      "Content-Type, Authorization"
+    );
+  }
+
+  // Always answer preflight quickly (if origin is allowed, headers are already set)
+  if (req.method === "OPTIONS") return res.sendStatus(204);
+
+  // If origin not allowed, block with a clear error (still no CORS header on purpose)
+  if (!ok) {
+    return res.status(403).json({
+      ok: false,
+      error: `CORS blocked origin: ${cleanOrigin}`,
+      allowed: Array.from(ALLOWED_ORIGINS),
+    });
+  }
+
+  next();
+});
+
+// -------------------- body parser --------------------
 app.use(express.json({ limit: "2mb" }));
 
+// -------------------- health --------------------
 app.get("/health", (req, res) => {
   res.json({
     ok: true,
@@ -106,11 +120,13 @@ app.get("/health", (req, res) => {
   });
 });
 
+// -------------------- docs loading --------------------
 async function fetchExcelDocument(docName, urlPath) {
-  // Prefer a "docs host" (your Netlify site) to fetch the XLSX files.
-  // Uses first FRONTEND_URLS entry by default.
   const docsBase =
-    process.env.DOCS_BASE_URL || FRONTEND_URLS[0] || FRONTEND_URL_DEV;
+    process.env.DOCS_BASE_URL ||
+    FRONTEND_URLS[0] ||
+    FRONTEND_URL_DEV ||
+    "http://localhost:5173";
 
   try {
     const netlifyUrl = `${String(docsBase).replace(/\/+$/, "")}/${urlPath}`;
@@ -155,8 +171,8 @@ async function loadDocuments(force = false) {
   for (const doc of docs) {
     try {
       DOCUMENT_CACHE[doc.key] = await fetchExcelDocument(doc.name, doc.file);
-    } catch (err) {
-      errlog(`❌ Failed to load ${doc.name}:`, err.message);
+    } catch (e) {
+      errlog(`❌ Failed to load ${doc.name}:`, e.message);
     }
   }
 
@@ -170,32 +186,24 @@ function buildContext(docsSelection) {
 
   if (docsSelection.qaVoice && DOCUMENT_CACHE.qaVoice) {
     parts.push(
-      `QA VOICE RUBRIC:\n${JSON.stringify(DOCUMENT_CACHE.qaVoice).slice(
-        0,
-        MAX_CHARS
-      )}`
+      `QA VOICE RUBRIC:\n${JSON.stringify(DOCUMENT_CACHE.qaVoice).slice(0, MAX_CHARS)}`
     );
   }
   if (docsSelection.qaGroup && DOCUMENT_CACHE.qaGroup) {
     parts.push(
-      `QA GROUPS RUBRIC:\n${JSON.stringify(DOCUMENT_CACHE.qaGroup).slice(
-        0,
-        MAX_CHARS
-      )}`
+      `QA GROUPS RUBRIC:\n${JSON.stringify(DOCUMENT_CACHE.qaGroup).slice(0, MAX_CHARS)}`
     );
   }
   if (docsSelection.matrix && DOCUMENT_CACHE.matrix) {
     parts.push(
-      `SERVICE MATRIX 2026:\n${JSON.stringify(DOCUMENT_CACHE.matrix).slice(
-        0,
-        MAX_CHARS
-      )}`
+      `SERVICE MATRIX 2026:\n${JSON.stringify(DOCUMENT_CACHE.matrix).slice(0, MAX_CHARS)}`
     );
   }
 
-  return parts.join("\n\n---\n\n") || "Use general call center best practices.";
+  return parts.join("\n\n---\n\n") || "NOT FOUND IN DOCS";
 }
 
+// -------------------- providers --------------------
 async function callNebius(question, systemPrompt) {
   const response = await fetch(
     "https://api.tokenfactory.nebius.com/v1/chat/completions",
@@ -220,19 +228,6 @@ async function callNebius(question, systemPrompt) {
   if (!response.ok) {
     const err = await response.json().catch(() => ({}));
     const errorMsg = err.error?.message || `Nebius API error: ${response.status}`;
-
-    if (
-      response.status === 402 ||
-      errorMsg.includes("balance") ||
-      errorMsg.includes("credit") ||
-      errorMsg.includes("billing")
-    ) {
-      const e = new Error(errorMsg);
-      e.noCredits = true;
-      e.status = 402;
-      throw e;
-    }
-
     const e = new Error(errorMsg);
     e.status = response.status;
     throw e;
@@ -263,12 +258,6 @@ async function callKimi(question, systemPrompt) {
   if (!response.ok) {
     const err = await response.json().catch(() => ({}));
     const errorMsg = err.error?.message || `Kimi API error: ${response.status}`;
-    if (response.status === 402 || errorMsg.includes("credit") || errorMsg.includes("余额")) {
-      const e = new Error(errorMsg);
-      e.noCredits = true;
-      e.status = 402;
-      throw e;
-    }
     const e = new Error(errorMsg);
     e.status = response.status;
     throw e;
@@ -293,11 +282,12 @@ async function callAnthropic(question, systemPrompt) {
   return msg.content[0]?.text || "No response";
 }
 
+// -------------------- main handler --------------------
 async function handleAsk(req, res) {
   const reqId = `req_${Date.now()}`;
   const { question, mode = "cloud", docs = {} } = req.body;
 
-  log(`[${reqId}] Question: ${String(question || "").slice(0, 80)}...`);
+  log(`[${reqId}] Question: ${String(question || "").slice(0, 120)}...`);
   if (!question) return res.status(400).json({ ok: false, error: "Missing question" });
 
   if (Object.keys(DOCUMENT_CACHE).length === 0) await loadDocuments();
@@ -332,7 +322,7 @@ You are "QA Master" — the strictest, smartest HotelPlanner Call Center Quality
 YOUR JOB
 - Give agents the exact compliant procedure for the guest situation.
 - Use ONLY the provided documents as your source of truth:
-  ${context}
+${context}
 
 NON-NEGOTIABLE RULES (HARD FAIL IF BROKEN)
 1) Do NOT use outside knowledge. If the docs do not cover it, say: "NOT FOUND IN DOCS" and ask 1–2 clarifying questions.
@@ -373,23 +363,27 @@ QUALITY CHECK
 - Missing Info Needed: (list) or "None"
 
 Now answer the user question using the rules above.
-`.trim();
-
+    `.trim();
 
     let apiPromise;
     switch (AI_PROVIDER) {
+      case "anthropic":
+        apiPromise = callAnthropic(question, systemPrompt);
+        break;
       case "nebius":
         apiPromise = callNebius(question, systemPrompt);
         break;
       case "kimi":
         apiPromise = callKimi(question, systemPrompt);
         break;
-      case "anthropic":
-        apiPromise = callAnthropic(question, systemPrompt);
-        break;
       default:
         throw new Error(`Unknown provider: ${AI_PROVIDER}`);
     }
+
+    // ✅ THIS WAS MISSING IN YOUR SERVER BEFORE (causes instant 500)
+    const timeoutPromise = new Promise((_, reject) =>
+      setTimeout(() => reject(Object.assign(new Error("Request timeout"), { status: 504 })), 55000)
+    );
 
     const answer = await Promise.race([apiPromise, timeoutPromise]);
 
@@ -406,13 +400,12 @@ Now answer the user question using the rules above.
           : ANTHROPIC_MODEL,
     });
   } catch (error) {
-    errlog(`[${reqId}] Error:`, error.message);
+    errlog(`[${reqId}] Error:`, error?.message || error);
     const status = error.status || 500;
 
     return res.status(status).json({
       ok: false,
-      error: error.message,
-      noCredits: !!error.noCredits,
+      error: error.message || "Unknown server error",
       provider: AI_PROVIDER,
     });
   }
@@ -426,8 +419,8 @@ app.post("/admin/reload-docs", async (req, res) => {
   try {
     await loadDocuments(true);
     res.json({ ok: true, message: "Documents reloaded", cached: Object.keys(DOCUMENT_CACHE) });
-  } catch (err) {
-    res.status(500).json({ ok: false, error: err.message });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
   }
 });
 
