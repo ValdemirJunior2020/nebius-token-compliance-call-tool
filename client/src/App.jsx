@@ -438,7 +438,8 @@ export default function App() {
 
     setInput("");
     const payload = buildPayload({ question, mode, docs: { ...docs, _availability: docAvail, _activeDocsLabel: activeDocsLabel } });
-    const endpoints = ["/api/claude", "/api/ask", "/api/query"];
+    const endpoints = ["/api/claude"];
+
 
     try {
       const result = await postToAnyEndpoint({ base: API_BASE, paths: endpoints, payload, timeoutMs: 65000 });

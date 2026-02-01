@@ -1,9 +1,16 @@
+/* ===== Click-fix: never block footer clicks ===== */
+.cc-footer,
+.cc-footer * {
+  pointer-events: auto !important;
+}
+
 /* ====== Layout ====== */
 .cc-root {
   min-height: 100vh;
   background: #ffffff;
   color: #111827;
-  font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji";
+  font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji",
+    "Segoe UI Emoji";
 }
 
 /* ====== Topbar (Pill Navbar) ====== */
@@ -15,15 +22,33 @@
   width: min(980px, calc(100vw - 40px));
   height: 62px;
   z-index: 80;
-  border-radius: 999px;
+
+  border-radius: 999px; /* Essential for round pipe ends */
   padding: 10px;
-  background: linear-gradient(to bottom, #000000 0%, #5a5a5a 15%, #1a1a1a 45%, #000000 80%, #1a1a1a 100%);
+
+  /* --- THE 3D "PIPE" EFFECT --- */
+  background: linear-gradient(
+    to bottom,
+    #000000 0%,
+    #5a5a5a 15%,
+    #1a1a1a 45%,
+    #000000 80%,
+    #1a1a1a 100%
+  );
+
   border: none;
-  box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.3), inset 0 4px 6px rgba(255, 255, 255, 0.1), inset 0 -5px 8px rgba(0, 0, 0, 0.7), 0 14px 28px rgba(0, 0, 0, 0.6);
+
+  box-shadow:
+    inset 0 1px 1px rgba(255, 255, 255, 0.3),
+    inset 0 4px 6px rgba(255, 255, 255, 0.1),
+    inset 0 -5px 8px rgba(0, 0, 0, 0.7),
+    0 14px 28px rgba(0, 0, 0, 0.6);
+
   backdrop-filter: blur(14px);
   -webkit-backdrop-filter: blur(14px);
 }
 
+/* inside row */
 .cc-navPill {
   position: relative;
   height: 100%;
@@ -35,6 +60,7 @@
   padding: 0 14px;
 }
 
+/* BIGGER LOGO */
 .cc-navLogo {
   width: 120px;
   height: 120px;
@@ -48,19 +74,24 @@
   margin-bottom: -24px;
 }
 
+/* ====== Nav Item (Resources, etc.) ====== */
 .cc-navItem {
   appearance: none;
   border: 0;
   background: transparent;
+
+  /* gold gradient text */
   background: linear-gradient(to right, #FCF6BA, #BF953F);
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
+
   font-size: 18px;
   font-weight: 700;
   padding: 10px 14px;
   cursor: pointer;
   text-decoration: none;
+
   transition: transform 120ms ease, filter 200ms ease;
 }
 
@@ -70,6 +101,7 @@
   filter: drop-shadow(0 0 8px rgba(255, 215, 0, 0.6));
 }
 
+/* Active State: Gold Underline */
 .cc-navItemPill.is-active {
   background: none;
   box-shadow: 0 2px 0 0 #BF953F;
@@ -79,20 +111,60 @@
   flex: 1;
 }
 
+/* CTA gradient ring */
+.cc-navItemCTA {
+  position: relative;
+  padding: 10px 24px;
+
+  background: linear-gradient(to right, #FCF6BA, #BF953F);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  font-weight: 700;
+
+  box-shadow: inset 0 0 0 1px rgba(255, 215, 0, 0.1);
+}
+
+.cc-navItemCTA::before {
+  content: "";
+  position: absolute;
+  inset: -2px;
+  border-radius: 999px;
+  background: linear-gradient(45deg, #BF953F, #FCF6BA, #B38728, #FBF5B7);
+  z-index: -1;
+}
+
+.cc-navItemCTA::after {
+  content: "";
+  position: absolute;
+  inset: 2px;
+  border-radius: 999px;
+  background: linear-gradient(180deg, #222 0%, #000 100%);
+  z-index: -1;
+}
+
+.cc-title {
+  display: none;
+}
+
+/* centered title */
 .cc-navTitle {
   position: absolute;
   left: 50%;
   top: 50%;
   transform: translate(-50%, -50%);
+
   font-size: 26px;
   font-weight: 800;
   white-space: nowrap;
   pointer-events: none;
+
   background: linear-gradient(to right, #BF953F, #FCF6BA, #B38728, #FBF5B7, #AA771C);
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
-  filter: drop-shadow(0 2px 0px rgba(0,0,0,0.5));
+
+  filter: drop-shadow(0 2px 0px rgba(0, 0, 0, 0.5));
 }
 
 /* ====== Main ====== */
@@ -117,6 +189,7 @@
   height: 18px;
 }
 
+/* ====== Hero ====== */
 .cc-hero {
   margin: 28px auto 18px;
   text-align: center;
@@ -167,6 +240,7 @@
   white-space: pre-wrap;
 }
 
+/* markdown */
 .cc-answer {
   font-size: 14px;
   line-height: 1.55;
@@ -177,11 +251,14 @@
   margin: 0 0 10px;
 }
 
-.cc-answer ul, .cc-answer ol {
+.cc-answer ul,
+.cc-answer ol {
   margin: 8px 0 10px 20px;
 }
 
-.cc-answer h1, .cc-answer h2, .cc-answer h3 {
+.cc-answer h1,
+.cc-answer h2,
+.cc-answer h3 {
   margin: 12px 0 8px;
   font-size: 14px;
 }
@@ -192,10 +269,10 @@
   border-radius: 8px;
 }
 
+/* Center ONLY the welcome bubble */
 .cc-msg.cc-intro {
   justify-content: center !important;
 }
-
 .cc-msg.cc-intro .cc-bubble {
   width: 100%;
   max-width: 620px;
@@ -223,7 +300,8 @@
   gap: 8px;
 }
 
-.cc-docRow {
+.cc-docRow,
+.cc-modeRow {
   display: flex;
   gap: 8px;
   flex-wrap: wrap;
@@ -396,6 +474,7 @@
   transform: translateX(-50%);
   width: min(720px, calc(100vw - 28px));
   z-index: 130;
+
   border-radius: 18px;
   border: 1px solid rgba(17, 24, 39, 0.10);
   background: rgba(255, 255, 255, 0.96);
@@ -473,374 +552,4 @@
 
 .cc-pillBtnGhost {
   background: transparent;
-}
-
-/* ====== Mobile ====== */
-@media (max-width: 768px) {
-  .cc-topbar {
-    width: calc(100vw - 20px);
-    height: 56px;
-    padding: 0 8px;
-  }
-  
-  .cc-navLogo {
-    width: 80px;
-    height: 80px;
-    margin-top: -12px;
-    margin-bottom: -12px;
-  }
-  
-  .cc-navTitle {
-    font-size: 16px;
-    max-width: 50%;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-  
-  .cc-navItem {
-    font-size: 14px;
-    padding: 8px 10px;
-  }
-}
-/* ====== Valentine Theme (SAFE OVERRIDES) ======
-   Drop this at the VERY END of your existing App.css.
-   It does NOT change your JSX or class names. It only overrides colors/backgrounds.
-*/
-
-/* --- soft pink background + floating hearts --- */
-.cc-root{
-  background:
-    radial-gradient(900px 500px at 15% 10%, rgba(255,105,180,0.18), transparent 60%),
-    radial-gradient(850px 480px at 85% 0%, rgba(255,20,147,0.14), transparent 55%),
-    radial-gradient(900px 520px at 50% 110%, rgba(255,182,193,0.22), transparent 60%),
-    linear-gradient(180deg, #fff0f6 0%, #ffffff 45%, #fff5f9 100%);
-}
-
-/* decorative hearts layer (no DOM changes) */
-.cc-root::before{
-  content:"";
-  position: fixed;
-  inset: 0;
-  pointer-events: none;
-  z-index: 0;
-  opacity: 0.35;
-  background-image:
-    radial-gradient(circle at 12px 12px, rgba(255, 105, 180, 0.55) 0 3px, transparent 4px),
-    radial-gradient(circle at 32px 28px, rgba(255, 20, 147, 0.42) 0 2px, transparent 3px),
-    radial-gradient(circle at 54px 14px, rgba(255, 182, 193, 0.55) 0 2px, transparent 3px);
-  background-size: 70px 70px;
-  filter: blur(0.2px);
-  animation: ccFloatHearts 18s linear infinite;
-}
-
-@keyframes ccFloatHearts{
-  from { transform: translateY(0); }
-  to   { transform: translateY(-70px); }
-}
-
-/* keep your UI above hearts */
-.cc-topbar, .cc-main, .cc-footer, .cc-popover, .cc-popoverScrim{
-  position: relative;
-  z-index: 1;
-}
-
-/* --- topbar: black->romantic berry gradient, keep your pill look --- */
-.cc-topbar{
-  background: linear-gradient(to bottom, #2a0a17 0%, #5b102c 35%, #2a0a17 100%);
-  box-shadow:
-    inset 0 1px 1px rgba(255, 255, 255, 0.22),
-    inset 0 4px 10px rgba(255, 105, 180, 0.18),
-    inset 0 -8px 12px rgba(0, 0, 0, 0.65),
-    0 18px 36px rgba(45, 0, 18, 0.55);
-}
-
-/* nav title gold -> rose-gold */
-.cc-navTitle{
-  background: linear-gradient(to right, #ffd1dc, #ff77a9, #ffb6c1, #ff4d88);
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
-  filter: drop-shadow(0 2px 0px rgba(0,0,0,0.55));
-}
-
-/* nav item text: rose shimmer */
-.cc-navItem{
-  background: linear-gradient(to right, #ffe0ea, #ff5c9a, #ffd1dc);
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
-}
-
-.cc-navItem:hover{
-  filter: drop-shadow(0 0 10px rgba(255, 77, 136, 0.7));
-}
-
-/* active underline */
-.cc-navItemPill.is-active{
-  box-shadow: 0 2px 0 0 rgba(255, 77, 136, 0.9);
-}
-
-/* --- bubbles: soft pink borders + subtle glow --- */
-.cc-bubble{
-  border: 1px solid rgba(255, 77, 136, 0.16);
-  box-shadow:
-    0 1px 0 rgba(17, 24, 39, 0.03),
-    0 10px 22px rgba(255, 105, 180, 0.08);
-}
-
-/* assistant bubble slightly tinted */
-.cc-bubbleAssistant{
-  background: rgba(255, 255, 255, 0.92);
-}
-
-/* user bubble a little rosy (without changing layout) */
-.cc-user .cc-bubble{
-  background: rgba(255, 240, 246, 0.92);
-}
-
-/* make headings/links in answers feel valentines */
-.cc-answer a{
-  color: #ff2d7d;
-  text-decoration: none;
-}
-.cc-answer a:hover{
-  text-decoration: underline;
-}
-
-/* --- hero text slightly warmer --- */
-.cc-heroTitle{ color: rgba(91, 16, 44, 0.62); }
-.cc-heroSub{ color: rgba(91, 16, 44, 0.52); }
-
-/* --- footer: pink glass --- */
-.cc-footer{
-  background: rgba(255, 228, 238, 0.86);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
-  border-top: 1px solid rgba(255, 77, 136, 0.14);
-}
-
-/* chips: pink active state */
-.cc-chip{
-  border: 1px solid rgba(255, 77, 136, 0.16);
-}
-.cc-chip.is-active{
-  border-color: rgba(255, 45, 125, 0.35);
-  box-shadow: 0 8px 18px rgba(255, 77, 136, 0.10);
-}
-
-/* input shell: rose outline */
-.cc-inputShell{
-  border: 1px solid rgba(255, 77, 136, 0.20);
-  box-shadow:
-    0 1px 0 rgba(17, 24, 39, 0.03),
-    0 14px 28px rgba(255, 105, 180, 0.10);
-}
-
-/* buttons: tiny pink accent on hover */
-.cc-sendBtn:hover:not(:disabled),
-.cc-pillBtn:hover{
-  border-color: rgba(255, 45, 125, 0.45);
-  box-shadow: 0 10px 20px rgba(255, 77, 136, 0.12);
-}
-
-/* resources popover: rosy glass */
-.cc-popover{
-  background: rgba(255, 255, 255, 0.92);
-  border: 1px solid rgba(255, 77, 136, 0.16);
-  box-shadow: 0 18px 60px rgba(45, 0, 18, 0.22);
-}
-
-/* errors: keep red but add gentle background */
-.cc-bannerError{
-  border: 1px solid rgba(255, 45, 125, 0.18);
-  background: rgba(255, 45, 125, 0.04);
-}
-/* ============================================================
-   MOBILE-FIRST RESPONSIVE PATCH (SAFE)
-   Paste this at the VERY END of your existing App.css.
-   No JSX changes. Only CSS overrides to prevent navbar text mix
-   and make layout mobile-first.
-   ============================================================ */
-
-/* Make sizing predictable everywhere */
-*, *::before, *::after { box-sizing: border-box; }
-
-/* Slightly tighter default spacing for small screens */
-.cc-threadInner { padding: 16px 12px; }
-
-/* ---------------- NAVBAR: prevent text overlap ---------------- */
-.cc-topbar { overflow: hidden; }
-
-.cc-navPill{
-  display: grid;
-  grid-template-columns: auto auto 1fr; /* logo | resources | spacer area */
-  align-items: center;
-  gap: 10px;
-  padding: 0 12px;
-}
-
-/* Stop absolute centering on small screens (it causes overlap) */
-.cc-navTitle{
-  position: static;
-  transform: none;
-  justify-self: center;
-  text-align: center;
-  max-width: 100%;
-  padding: 0 6px;
-  line-height: 1.1;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  pointer-events: none;
-}
-
-/* Keep logo + resources left, title centered */
-.cc-navLogo{ justify-self: start; }
-.cc-navItem{ justify-self: start; }
-
-/* Keep spacer as filler */
-.cc-navSpacer{
-  width: 0;
-  min-width: 0;
-  justify-self: end;
-}
-
-/* Make topbar height adapt on mobile */
-@media (max-width: 520px){
-  .cc-topbar{
-    top: 10px;
-    height: 56px;
-    width: calc(100vw - 16px);
-    padding: 8px;
-  }
-
-  .cc-navPill{
-    grid-template-columns: 58px auto 1fr;
-    gap: 8px;
-    padding: 0 10px;
-  }
-
-  .cc-navLogo{
-    width: 56px;
-    height: 56px;
-    margin: 0;            /* remove negative margins so it doesn't collide */
-    padding: 4px;
-  }
-
-  .cc-navItem{
-    font-size: 13px;
-    padding: 6px 8px;
-  }
-
-  .cc-navTitle{
-    font-size: 15px;
-    letter-spacing: 0.2px;
-    max-width: 100%;
-  }
-}
-
-@media (max-width: 380px){
-  .cc-navPill{ grid-template-columns: 52px auto 1fr; }
-  .cc-navLogo{ width: 50px; height: 50px; }
-  .cc-navItem{ font-size: 12px; padding: 6px 6px; }
-  .cc-navTitle{ font-size: 14px; }
-}
-
-/* ---------------- MAIN / THREAD: mobile-first spacing ---------------- */
-.cc-main{
-  padding-top: 86px;     /* smaller top padding for smaller topbar */
-  padding-bottom: 210px; /* enough space for footer + chips + input */
-}
-
-@media (max-width: 520px){
-  .cc-threadInner{
-    padding: 14px 10px;
-  }
-  .cc-bubble{
-    width: 100%;
-    max-width: 100%;
-  }
-  .cc-msg{
-    margin: 10px 0;
-  }
-  .cc-msg.cc-intro .cc-bubble{
-    max-width: 100%;
-  }
-}
-
-/* ---------------- FOOTER: chips wrap nicely + input stays usable ---------------- */
-.cc-footer-inner{
-  padding: 10px 10px 10px;
-}
-
-/* Chips: allow scrolling on very small screens instead of wrapping to 3 lines */
-@media (max-width: 520px){
-  .cc-docRow{
-    justify-content: flex-start;
-    flex-wrap: nowrap;
-    overflow-x: auto;
-    -webkit-overflow-scrolling: touch;
-    padding-bottom: 4px;
-  }
-  .cc-docRow::-webkit-scrollbar{ height: 6px; }
-  .cc-chip{
-    flex: 0 0 auto;
-    white-space: nowrap;
-  }
-}
-
-/* Input shell: tighter and always fits */
-@media (max-width: 520px){
-  .cc-inputShell{
-    grid-template-columns: 36px 1fr 36px 40px;
-    gap: 6px;
-    padding: 8px;
-    border-radius: 16px;
-  }
-  .cc-iconBtn{
-    width: 36px;
-    height: 36px;
-    border-radius: 12px;
-  }
-  .cc-sendBtn{
-    width: 40px;
-    height: 36px;
-    border-radius: 12px;
-  }
-  .cc-textarea{
-    font-size: 14px;
-    padding: 6px 4px;
-  }
-}
-
-/* ---------------- POPOVER: fit mobile ---------------- */
-@media (max-width: 520px){
-  .cc-popover{
-    top: 76px;
-    width: calc(100vw - 16px);
-  }
-  .cc-errorVideo{
-    width: 100%;
-  }
-}
-
-/* ---------------- OPTIONAL: reduce motion for accessibility ---------------- */
-@media (prefers-reduced-motion: reduce){
-  .cc-root::before{ animation: none !important; }
-}
-/* --- tiny polish tweaks --- */
-.cc-heroTitle, .cc-heroSub {
-  color: rgba(17, 24, 39, 0.62);
-}
-
-.cc-msg.cc-intro .cc-bubble {
-  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.08);
-  border-color: rgba(255, 105, 180, 0.20);
-}
-
-@media (max-width: 380px){
-  .cc-navTitle{
-    letter-spacing: 0;
-    max-width: 170px; /* prevents collisions on tiny phones */
-  }
 }
