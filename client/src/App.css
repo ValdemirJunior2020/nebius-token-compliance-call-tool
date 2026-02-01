@@ -655,3 +655,192 @@
   border: 1px solid rgba(255, 45, 125, 0.18);
   background: rgba(255, 45, 125, 0.04);
 }
+/* ============================================================
+   MOBILE-FIRST RESPONSIVE PATCH (SAFE)
+   Paste this at the VERY END of your existing App.css.
+   No JSX changes. Only CSS overrides to prevent navbar text mix
+   and make layout mobile-first.
+   ============================================================ */
+
+/* Make sizing predictable everywhere */
+*, *::before, *::after { box-sizing: border-box; }
+
+/* Slightly tighter default spacing for small screens */
+.cc-threadInner { padding: 16px 12px; }
+
+/* ---------------- NAVBAR: prevent text overlap ---------------- */
+.cc-topbar { overflow: hidden; }
+
+.cc-navPill{
+  display: grid;
+  grid-template-columns: auto auto 1fr; /* logo | resources | spacer area */
+  align-items: center;
+  gap: 10px;
+  padding: 0 12px;
+}
+
+/* Stop absolute centering on small screens (it causes overlap) */
+.cc-navTitle{
+  position: static;
+  transform: none;
+  justify-self: center;
+  text-align: center;
+  max-width: 100%;
+  padding: 0 6px;
+  line-height: 1.1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  pointer-events: none;
+}
+
+/* Keep logo + resources left, title centered */
+.cc-navLogo{ justify-self: start; }
+.cc-navItem{ justify-self: start; }
+
+/* Keep spacer as filler */
+.cc-navSpacer{
+  width: 0;
+  min-width: 0;
+  justify-self: end;
+}
+
+/* Make topbar height adapt on mobile */
+@media (max-width: 520px){
+  .cc-topbar{
+    top: 10px;
+    height: 56px;
+    width: calc(100vw - 16px);
+    padding: 8px;
+  }
+
+  .cc-navPill{
+    grid-template-columns: 58px auto 1fr;
+    gap: 8px;
+    padding: 0 10px;
+  }
+
+  .cc-navLogo{
+    width: 56px;
+    height: 56px;
+    margin: 0;            /* remove negative margins so it doesn't collide */
+    padding: 4px;
+  }
+
+  .cc-navItem{
+    font-size: 13px;
+    padding: 6px 8px;
+  }
+
+  .cc-navTitle{
+    font-size: 15px;
+    letter-spacing: 0.2px;
+    max-width: 100%;
+  }
+}
+
+@media (max-width: 380px){
+  .cc-navPill{ grid-template-columns: 52px auto 1fr; }
+  .cc-navLogo{ width: 50px; height: 50px; }
+  .cc-navItem{ font-size: 12px; padding: 6px 6px; }
+  .cc-navTitle{ font-size: 14px; }
+}
+
+/* ---------------- MAIN / THREAD: mobile-first spacing ---------------- */
+.cc-main{
+  padding-top: 86px;     /* smaller top padding for smaller topbar */
+  padding-bottom: 210px; /* enough space for footer + chips + input */
+}
+
+@media (max-width: 520px){
+  .cc-threadInner{
+    padding: 14px 10px;
+  }
+  .cc-bubble{
+    width: 100%;
+    max-width: 100%;
+  }
+  .cc-msg{
+    margin: 10px 0;
+  }
+  .cc-msg.cc-intro .cc-bubble{
+    max-width: 100%;
+  }
+}
+
+/* ---------------- FOOTER: chips wrap nicely + input stays usable ---------------- */
+.cc-footer-inner{
+  padding: 10px 10px 10px;
+}
+
+/* Chips: allow scrolling on very small screens instead of wrapping to 3 lines */
+@media (max-width: 520px){
+  .cc-docRow{
+    justify-content: flex-start;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    padding-bottom: 4px;
+  }
+  .cc-docRow::-webkit-scrollbar{ height: 6px; }
+  .cc-chip{
+    flex: 0 0 auto;
+    white-space: nowrap;
+  }
+}
+
+/* Input shell: tighter and always fits */
+@media (max-width: 520px){
+  .cc-inputShell{
+    grid-template-columns: 36px 1fr 36px 40px;
+    gap: 6px;
+    padding: 8px;
+    border-radius: 16px;
+  }
+  .cc-iconBtn{
+    width: 36px;
+    height: 36px;
+    border-radius: 12px;
+  }
+  .cc-sendBtn{
+    width: 40px;
+    height: 36px;
+    border-radius: 12px;
+  }
+  .cc-textarea{
+    font-size: 14px;
+    padding: 6px 4px;
+  }
+}
+
+/* ---------------- POPOVER: fit mobile ---------------- */
+@media (max-width: 520px){
+  .cc-popover{
+    top: 76px;
+    width: calc(100vw - 16px);
+  }
+  .cc-errorVideo{
+    width: 100%;
+  }
+}
+
+/* ---------------- OPTIONAL: reduce motion for accessibility ---------------- */
+@media (prefers-reduced-motion: reduce){
+  .cc-root::before{ animation: none !important; }
+}
+/* --- tiny polish tweaks --- */
+.cc-heroTitle, .cc-heroSub {
+  color: rgba(17, 24, 39, 0.62);
+}
+
+.cc-msg.cc-intro .cc-bubble {
+  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.08);
+  border-color: rgba(255, 105, 180, 0.20);
+}
+
+@media (max-width: 380px){
+  .cc-navTitle{
+    letter-spacing: 0;
+    max-width: 170px; /* prevents collisions on tiny phones */
+  }
+}
