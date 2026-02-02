@@ -30,14 +30,7 @@ const QA_MASTER_INTRO = `I'm ready to assist as QA Master.
 
 Please provide the guest situation or agent question so I can give you the exact compliant procedure.
 
-Examples of what I can help with:
-
-"Guest says their reservation is not found at check-in"
-"Caller wants to change the name on their booking"
-"Guest is being walked due to overbooking"
-"How should I open the call correctly?"
-"Guest wants a refund for incorrect dates"
-What is the scenario you need guidance on?`;
+`;
 
 // --- logging ----------------------------------------------------------------
 const DEBUG = true;
