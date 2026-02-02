@@ -26,9 +26,8 @@ const MATRIX_PUBLIC_PATH = "/Service Matrix's 2026.xlsx";
 const TRAINING_GUIDE_JSON_PATH = "/hotelplanner_training_guide.json";
 
 // --- QA Master Intro (fixed text) --------------------------------------------
-const QA_MASTER_INTRO = `I'm ready to assist as QA Master.
-
-Please provide the guest situation or agent question so I can give you the exact compliant procedure.
+const QA_MASTER_INTRO = `I’m ready to assist as your QA Valentine 💖
+Share the guest situation or agent question, and I’ll give you the exact compliant procedure—clear, step-by-step, and perfectly on script.
 `;
 
 // --- logging ----------------------------------------------------------------
