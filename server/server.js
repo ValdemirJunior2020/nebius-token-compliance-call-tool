@@ -1,4 +1,4 @@
-// server/server.js - Anthropic (Claude) + Excel docs + FIXED CORS + timeoutPromise
+// server/server.js - Anthropic (Claude) + Excel + JSON docs + FIXED CORS + timeoutPromise
 import express from "express";
 import dotenv from "dotenv";
 import path from "path";
@@ -21,11 +21,9 @@ const NEBIUS_API_KEY = process.env.NEBIUS_API_KEY || "";
 const KIMI_API_KEY = process.env.KIMI_API_KEY || "";
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY || "";
 
-const NEBIUS_MODEL =
-  process.env.NEBIUS_MODEL || "meta-llama/Meta-Llama-3.1-70B-Instruct";
+const NEBIUS_MODEL = process.env.NEBIUS_MODEL || "meta-llama/Meta-Llama-3.1-70B-Instruct";
 const KIMI_MODEL = process.env.KIMI_MODEL || "moonshot-v1-8k";
-const ANTHROPIC_MODEL =
-  process.env.ANTHROPIC_MODEL || "claude-3-5-sonnet-20240620";
+const ANTHROPIC_MODEL = process.env.ANTHROPIC_MODEL || "claude-3-5-sonnet-20240620";
 
 const log = (...a) => DEBUG && console.log("[server]", ...a);
 const errlog = (...a) => console.error("[server]", ...a);
@@ -34,21 +32,14 @@ let DOCUMENT_CACHE = {};
 let LAST_LOAD = 0;
 
 // -------------------- CORS (FIXED) --------------------
-// IMPORTANT: If CORS fails, the browser shows "No Access-Control-Allow-Origin"
-// and your frontend "fails to fetch" even if the server is up.
-// This middleware ALWAYS returns proper CORS headers for allowed origins,
-// including during OPTIONS preflight.
 const FRONTEND_URLS = String(
-  process.env.FRONTEND_URLS ||
-    process.env.FRONTEND_URL ||
-    "https://nebius-api-call-compliance-tool.netlify.app"
+  process.env.FRONTEND_URLS || process.env.FRONTEND_URL || "https://nebius-api-call-compliance-tool.netlify.app"
 )
   .split(",")
   .map((s) => s.trim().replace(/\/+$/, ""))
   .filter(Boolean);
 
-const FRONTEND_URL_DEV =
-  (process.env.FRONTEND_URL_DEV || "http://localhost:5173").replace(/\/+$/, "");
+const FRONTEND_URL_DEV = (process.env.FRONTEND_URL_DEV || "http://localhost:5173").replace(/\/+$/, "");
 
 const ALLOWED_ORIGINS = new Set([
   ...FRONTEND_URLS,
@@ -69,7 +60,6 @@ function isNetlifySubdomain(origin) {
 app.use((req, res, next) => {
   const origin = req.headers.origin;
 
-  // allow server-to-server, curl, health monitors
   if (!origin) return next();
 
   const cleanOrigin = String(origin).replace(/\/+$/, "");
@@ -80,16 +70,11 @@ app.use((req, res, next) => {
     res.setHeader("Vary", "Origin");
     res.setHeader("Access-Control-Allow-Credentials", "true");
     res.setHeader("Access-Control-Allow-Methods", "GET,POST,OPTIONS");
-    res.setHeader(
-      "Access-Control-Allow-Headers",
-      "Content-Type, Authorization"
-    );
+    res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
   }
 
-  // Always answer preflight quickly (if origin is allowed, headers are already set)
   if (req.method === "OPTIONS") return res.sendStatus(204);
 
-  // If origin not allowed, block with a clear error (still no CORS header on purpose)
   if (!ok) {
     return res.status(403).json({
       ok: false,
@@ -121,18 +106,23 @@ app.get("/health", (req, res) => {
 });
 
 // -------------------- docs loading --------------------
-async function fetchExcelDocument(docName, urlPath) {
-  const docsBase =
+function getDocsBase() {
+  return (
     process.env.DOCS_BASE_URL ||
     FRONTEND_URLS[0] ||
     FRONTEND_URL_DEV ||
-    "http://localhost:5173";
+    "http://localhost:5173"
+  );
+}
+
+async function fetchExcelDocument(docName, urlPath) {
+  const docsBase = getDocsBase();
 
   try {
     const netlifyUrl = `${String(docsBase).replace(/\/+$/, "")}/${urlPath}`;
     log(`Fetching ${docName} from ${netlifyUrl}`);
 
-    const response = await fetch(netlifyUrl);
+    const response = await fetch(netlifyUrl, { cache: "no-store" });
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
 
     const buffer = Buffer.from(await response.arrayBuffer());
@@ -141,11 +131,35 @@ async function fetchExcelDocument(docName, urlPath) {
   } catch (netlifyError) {
     log(`Docs fetch failed, trying local: ${netlifyError.message}`);
     const localPath = path.join(__dirname, "data", urlPath);
-    if (!fs.existsSync(localPath))
-      throw new Error(`Document not found: ${localPath}`);
+    if (!fs.existsSync(localPath)) throw new Error(`Document not found: ${localPath}`);
 
     const workbook = xlsx.readFile(localPath);
     return parseWorkbook(workbook, docName);
+  }
+}
+
+async function fetchJsonDocument(docName, urlPath) {
+  const docsBase = getDocsBase();
+
+  try {
+    const netlifyUrl = `${String(docsBase).replace(/\/+$/, "")}/${urlPath}`;
+    log(`Fetching ${docName} from ${netlifyUrl}`);
+
+    const response = await fetch(netlifyUrl, { cache: "no-store" });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+
+    const json = await response.json();
+    log(`✅ Parsed ${docName}: JSON keys=${Object.keys(json || {}).length}`);
+    return json;
+  } catch (netlifyError) {
+    log(`Docs fetch failed, trying local: ${netlifyError.message}`);
+    const localPath = path.join(__dirname, "data", urlPath);
+    if (!fs.existsSync(localPath)) throw new Error(`Document not found: ${localPath}`);
+
+    const raw = fs.readFileSync(localPath, "utf-8");
+    const json = JSON.parse(raw);
+    log(`✅ Parsed ${docName}: JSON keys=${Object.keys(json || {}).length}`);
+    return json;
   }
 }
 
@@ -163,14 +177,18 @@ async function loadDocuments(force = false) {
   if (Object.keys(DOCUMENT_CACHE).length > 0 && !force) return;
 
   const docs = [
-    { key: "qaVoice", file: "qa-voice.xlsx", name: "QA Voice" },
-    { key: "qaGroup", file: "qa-group.xlsx", name: "QA Groups" },
-    { key: "matrix", file: "Service Matrix's 2026.xlsx", name: "Service Matrix" },
+    { key: "qaVoice", file: "qa-voice.xlsx", name: "QA Voice", kind: "excel" },
+    { key: "qaGroup", file: "qa-group.xlsx", name: "QA Groups", kind: "excel" },
+    { key: "matrix", file: "Service Matrix's 2026.xlsx", name: "Service Matrix", kind: "excel" },
+    { key: "trainingGuide", file: "hotelplanner_training_guide.json", name: "Training Guide", kind: "json" },
   ];
 
   for (const doc of docs) {
     try {
-      DOCUMENT_CACHE[doc.key] = await fetchExcelDocument(doc.name, doc.file);
+      DOCUMENT_CACHE[doc.key] =
+        doc.kind === "json"
+          ? await fetchJsonDocument(doc.name, doc.file)
+          : await fetchExcelDocument(doc.name, doc.file);
     } catch (e) {
       errlog(`❌ Failed to load ${doc.name}:`, e.message);
     }
@@ -184,20 +202,20 @@ function buildContext(docsSelection) {
   const parts = [];
   const MAX_CHARS = 6000;
 
+  // ✅ Matrix is ALWAYS included (locked on in the client, but enforced here too)
+  const wantMatrix = true;
+
   if (docsSelection.qaVoice && DOCUMENT_CACHE.qaVoice) {
-    parts.push(
-      `QA VOICE RUBRIC:\n${JSON.stringify(DOCUMENT_CACHE.qaVoice).slice(0, MAX_CHARS)}`
-    );
+    parts.push(`QA VOICE RUBRIC:\n${JSON.stringify(DOCUMENT_CACHE.qaVoice).slice(0, MAX_CHARS)}`);
   }
   if (docsSelection.qaGroup && DOCUMENT_CACHE.qaGroup) {
-    parts.push(
-      `QA GROUPS RUBRIC:\n${JSON.stringify(DOCUMENT_CACHE.qaGroup).slice(0, MAX_CHARS)}`
-    );
+    parts.push(`QA GROUPS RUBRIC:\n${JSON.stringify(DOCUMENT_CACHE.qaGroup).slice(0, MAX_CHARS)}`);
   }
-  if (docsSelection.matrix && DOCUMENT_CACHE.matrix) {
-    parts.push(
-      `SERVICE MATRIX 2026:\n${JSON.stringify(DOCUMENT_CACHE.matrix).slice(0, MAX_CHARS)}`
-    );
+  if (wantMatrix && DOCUMENT_CACHE.matrix) {
+    parts.push(`SERVICE MATRIX 2026:\n${JSON.stringify(DOCUMENT_CACHE.matrix).slice(0, MAX_CHARS)}`);
+  }
+  if (docsSelection.trainingGuide && DOCUMENT_CACHE.trainingGuide) {
+    parts.push(`TRAINING GUIDE (JSON):\n${JSON.stringify(DOCUMENT_CACHE.trainingGuide).slice(0, MAX_CHARS)}`);
   }
 
   return parts.join("\n\n---\n\n") || "NOT FOUND IN DOCS";
@@ -205,25 +223,22 @@ function buildContext(docsSelection) {
 
 // -------------------- providers --------------------
 async function callNebius(question, systemPrompt) {
-  const response = await fetch(
-    "https://api.tokenfactory.nebius.com/v1/chat/completions",
-    {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${NEBIUS_API_KEY}`,
-      },
-      body: JSON.stringify({
-        model: NEBIUS_MODEL,
-        messages: [
-          { role: "system", content: systemPrompt },
-          { role: "user", content: question },
-        ],
-        temperature: 0.2,
-        max_tokens: 1500,
-      }),
-    }
-  );
+  const response = await fetch("https://api.tokenfactory.nebius.com/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${NEBIUS_API_KEY}`,
+    },
+    body: JSON.stringify({
+      model: NEBIUS_MODEL,
+      messages: [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: question },
+      ],
+      temperature: 0.2,
+      max_tokens: 1500,
+    }),
+  });
 
   if (!response.ok) {
     const err = await response.json().catch(() => ({}));
@@ -380,7 +395,6 @@ Now answer the user question using the rules above.
         throw new Error(`Unknown provider: ${AI_PROVIDER}`);
     }
 
-    // ✅ THIS WAS MISSING IN YOUR SERVER BEFORE (causes instant 500)
     const timeoutPromise = new Promise((_, reject) =>
       setTimeout(() => reject(Object.assign(new Error("Request timeout"), { status: 504 })), 55000)
     );
@@ -392,12 +406,7 @@ Now answer the user question using the rules above.
       ok: true,
       answer,
       provider: AI_PROVIDER,
-      model:
-        AI_PROVIDER === "nebius"
-          ? NEBIUS_MODEL
-          : AI_PROVIDER === "kimi"
-          ? KIMI_MODEL
-          : ANTHROPIC_MODEL,
+      model: AI_PROVIDER === "nebius" ? NEBIUS_MODEL : AI_PROVIDER === "kimi" ? KIMI_MODEL : ANTHROPIC_MODEL,
     });
   } catch (error) {
     errlog(`[${reqId}] Error:`, error?.message || error);
@@ -444,7 +453,7 @@ app.listen(PORT, async () => {
   const currentKey = { nebius: NEBIUS_API_KEY, kimi: KIMI_API_KEY, anthropic: ANTHROPIC_API_KEY }[AI_PROVIDER];
 
   if (currentKey) {
-    console.log("⏳ Loading Excel documents...");
+    console.log("⏳ Loading documents...");
     await loadDocuments();
   } else {
     console.log(`⚠️  No API key for ${AI_PROVIDER}`);

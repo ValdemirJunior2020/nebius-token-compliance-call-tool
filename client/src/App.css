@@ -553,3 +553,35 @@
 .cc-pillBtnGhost {
   background: transparent;
 }
+/* ADD THIS AT THE VERY BOTTOM OF YOUR EXISTING CSS (stronger chip visibility) */
+
+/* Strong active style so you can SEE the click */
+.cc-chip {
+  transition: transform 120ms ease, box-shadow 140ms ease, background 140ms ease, border-color 140ms ease, color 140ms ease;
+}
+
+.cc-chip:active {
+  transform: translateY(1px);
+}
+
+.cc-chip.is-active {
+  background: linear-gradient(to right, #1a1a1a, #000000);
+  color: #ffd36a !important;
+  border-color: rgba(255, 211, 106, 0.65) !important;
+  box-shadow: 0 10px 22px rgba(0, 0, 0, 0.12), inset 0 0 0 1px rgba(255, 211, 106, 0.20);
+  font-weight: 800;
+}
+
+.cc-chip.is-locked {
+  cursor: default;
+}
+
+.cc-chip.is-disabled {
+  cursor: not-allowed;
+}
+
+/* Optional: outline focus for keyboard + clarity */
+.cc-chip:focus-visible {
+  outline: 3px solid rgba(191, 149, 63, 0.55);
+  outline-offset: 2px;
+}

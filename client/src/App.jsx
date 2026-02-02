@@ -22,14 +22,13 @@ const QA_GROUP_XLSX_PATH = "/qa-group.xlsx";
 const QA_VOICE_XLSX_PATH = "/qa-voice.xlsx";
 const MATRIX_PUBLIC_PATH = "/Service Matrix's 2026.xlsx";
 
-const TRAINING_GUIDE_TXT_PATH = "/training_guide.txt";
-const TRAINING_GUIDE_CHUNKS_PATH = "/training_guide.chunks.jsonl";
+// ✅ Training guide JSON (client/public/hotelplanner_training_guide.json)
+const TRAINING_GUIDE_JSON_PATH = "/hotelplanner_training_guide.json";
 
 // --- QA Master Intro (fixed text) --------------------------------------------
 const QA_MASTER_INTRO = `I'm ready to assist as QA Master.
 
 Please provide the guest situation or agent question so I can give you the exact compliant procedure.
-
 `;
 
 // --- logging ----------------------------------------------------------------
@@ -98,7 +97,7 @@ async function fetchWithTimeout(url, options = {}, timeoutMs = 45000) {
   const t = setTimeout(() => ctrl.abort(), timeoutMs);
   try {
     log("fetchWithTimeout ->", { url, timeoutMs });
-    const res = await fetch(url, { ...options, signal: ctrl.signal });
+    const res = await fetch(url, { ...options, signal: ctrl.signal, cache: "no-store" });
     log("fetchWithTimeout <-", { url, status: res.status, ok: res.ok });
     return res;
   } finally {
@@ -213,11 +212,7 @@ class ErrorBoundary extends React.Component {
             <div className="cc-bannerError">
               <div style={{ fontWeight: 700 }}>🚨 UI Error</div>
               <div className="cc-bannerSub">Refresh to fix.</div>
-              <button
-                className="cc-sendBtn"
-                onClick={() => window.location.reload()}
-                style={{ marginTop: 10 }}
-              >
+              <button className="cc-sendBtn" onClick={() => window.location.reload()} style={{ marginTop: 10 }}>
                 Reload
               </button>
             </div>
@@ -229,26 +224,26 @@ class ErrorBoundary extends React.Component {
 }
 
 // --- UI Configuration ---------------------------------------------------------
+// ✅ Matrix is ALWAYS included (locked ON). Buttons choose extra docs.
 const DEFAULT_DOCS = {
-  matrix: true,
-  trainingTxt: false,
-  trainingChunks: false,
+  matrix: true, // locked
+  trainingGuide: true,
   qaVoice: true,
   qaGroup: false,
 };
 
 const DOC_META = [
-  { key: "matrix", label: "Matrix 2026", path: MATRIX_PUBLIC_PATH },
-  { key: "trainingTxt", label: "Training Guide", path: TRAINING_GUIDE_TXT_PATH },
-  { key: "trainingChunks", label: "Guide Chunks", path: TRAINING_GUIDE_CHUNKS_PATH },
+  { key: "matrix", label: "Matrix 2026", path: MATRIX_PUBLIC_PATH, locked: true },
+  { key: "trainingGuide", label: "Training Guide (JSON)", path: TRAINING_GUIDE_JSON_PATH },
   { key: "qaVoice", label: "QA Voice", path: QA_VOICE_XLSX_PATH },
   { key: "qaGroup", label: "QA Groups", path: QA_GROUP_XLSX_PATH },
 ];
 
 const RESOURCES = [
-  { label: "QA Groups (.xlsx)", href: QA_GROUP_XLSX_PATH, fileName: "qa-group.xlsx" },
   { label: "Service Matrix 2026 (.xlsx)", href: MATRIX_PUBLIC_PATH, fileName: "Service Matrix's 2026.xlsx" },
+  { label: "Training Guide (JSON)", href: TRAINING_GUIDE_JSON_PATH, fileName: "hotelplanner_training_guide.json" },
   { label: "QA Voice (.xlsx)", href: QA_VOICE_XLSX_PATH, fileName: "qa-voice.xlsx" },
+  { label: "QA Groups (.xlsx)", href: QA_GROUP_XLSX_PATH, fileName: "qa-group.xlsx" },
 ];
 
 function buildPayload({ question, mode, docs }) {
@@ -269,7 +264,7 @@ Frontend tried: ${attemptedPath || "(unknown path)"}
 
 Fix:
 1) Check that server.js has the route: app.post("/api/claude", ...)
-2) Verify API_BASE in App.js matches your server URL
+2) Verify API_BASE in App.jsx matches your server URL
 3) Try: ${base}/health (should return JSON)
 
 Current API_BASE: ${apiBase}
@@ -337,7 +332,11 @@ function MessageBubble({ m, isIntro }) {
               <div className="cc-bannerSub" style={{ textAlign: "center" }}>
                 Check your server API key / auth.
               </div>
-              {m.text ? <pre className="cc-error" style={{ marginTop: 10 }}>{normalizeWs(m.text)}</pre> : null}
+              {m.text ? (
+                <pre className="cc-error" style={{ marginTop: 10 }}>
+                  {normalizeWs(m.text)}
+                </pre>
+              ) : null}
             </div>
           </div>
         ) : m.kind === "error404" ? (
@@ -349,7 +348,11 @@ function MessageBubble({ m, isIntro }) {
               <div className="cc-error" style={{ textAlign: "center" }}>
                 💳 Credits / billing issue.
               </div>
-              {m.text ? <pre className="cc-error" style={{ marginTop: 10 }}>{normalizeWs(m.text)}</pre> : null}
+              {m.text ? (
+                <pre className="cc-error" style={{ marginTop: 10 }}>
+                  {normalizeWs(m.text)}
+                </pre>
+              ) : null}
             </div>
           </div>
         ) : m.kind === "error" ? (
@@ -380,14 +383,7 @@ function ResourcePopover({ open, onClose }) {
           <div className="cc-popoverHint">Download compliance files:</div>
           <div className="cc-resourceList">
             {RESOURCES.map((r) => (
-              <a
-                key={r.href}
-                className="cc-resourceItem"
-                href={r.href}
-                download={r.fileName}
-                target="_blank"
-                rel="noreferrer"
-              >
+              <a key={r.href} className="cc-resourceItem" href={r.href} download={r.fileName} target="_blank" rel="noreferrer">
                 <div className="cc-resourceName">{r.label}</div>
                 <div className="cc-resourceSub">{r.fileName}</div>
               </a>
@@ -404,11 +400,22 @@ export default function App() {
   const textareaRef = useRef(null);
   const threadEndRef = useRef(null);
 
-  const [mode, setMode] = useState(() => tryLoadLocal("cc_mode", "cloud"));
-  const [docs, setDocs] = useState(() => tryLoadLocal("cc_docs", DEFAULT_DOCS));
+  // ✅ stop random "local" mode stuck in localStorage
+  const [mode, setMode] = useState(() => {
+    const saved = tryLoadLocal("cc_mode", "cloud");
+    return saved === "local" || saved === "cloud" ? saved : "cloud";
+  });
+
+  // docs state (matrix always true)
+  const [docs, setDocs] = useState(() => {
+    const saved = tryLoadLocal("cc_docs", DEFAULT_DOCS);
+    return { ...DEFAULT_DOCS, ...(saved || {}), matrix: true };
+  });
+
+  // availability (real check)
   const [docAvail, setDocAvail] = useState(() =>
     DOC_META.reduce((acc, d) => {
-      acc[d.key] = true;
+      acc[d.key] = true; // optimistic until probed
       return acc;
     }, {})
   );
@@ -430,15 +437,14 @@ export default function App() {
 
   useAutoResizeTextarea(textareaRef, input);
 
-  const firstAssistantId = useMemo(
-    () => messages.find((x) => x.role === "assistant")?.id ?? null,
-    [messages]
-  );
+  const firstAssistantId = useMemo(() => messages.find((x) => x.role === "assistant")?.id ?? null, [messages]);
 
   const activeDocsLabel = useMemo(() => {
-    const enabled = DOC_META.filter((d) => docs[d.key]).map((d) => d.label);
+    const enabled = DOC_META.filter((d) => (d.locked ? true : !!docs[d.key]))
+      .filter((d) => !!docAvail[d.key])
+      .map((d) => d.label);
     return enabled.length ? enabled.join(", ") : "No docs selected";
-  }, [docs]);
+  }, [docs, docAvail]);
 
   const scrollToBottom = useCallback(() => {
     const el = threadEndRef.current;
@@ -449,8 +455,29 @@ export default function App() {
   useEffect(() => {
     scrollToBottom();
   }, [messages, scrollToBottom]);
+
   useEffect(() => trySaveLocal("cc_mode", mode), [mode]);
-  useEffect(() => trySaveLocal("cc_docs", docs), [docs]);
+  useEffect(() => trySaveLocal("cc_docs", { ...docs, matrix: true }), [docs]);
+
+  // ✅ probe which docs exist (so chips can disable + show clear banner)
+  const probeDocs = useCallback(async () => {
+    const results = {};
+    for (const d of DOC_META) {
+      try {
+        // HEAD sometimes blocked by some hosts; fallback to GET if needed
+        const head = await fetchWithTimeout(d.path, { method: "HEAD" }, 8000).catch(() => null);
+        if (head && head.ok) {
+          results[d.key] = true;
+        } else {
+          const get = await fetchWithTimeout(d.path, { method: "GET" }, 8000);
+          results[d.key] = !!get.ok;
+        }
+      } catch (e) {
+        results[d.key] = false;
+      }
+    }
+    setDocAvail((prev) => ({ ...prev, ...results }));
+  }, []);
 
   // Check server health
   const runHealthCheck = useCallback(async () => {
@@ -468,9 +495,14 @@ export default function App() {
 
   useEffect(() => {
     runHealthCheck();
+    probeDocs();
     const t = setInterval(() => runHealthCheck(), 60000);
-    return () => clearInterval(t);
-  }, [runHealthCheck]);
+    const t2 = setInterval(() => probeDocs(), 120000);
+    return () => {
+      clearInterval(t);
+      clearInterval(t2);
+    };
+  }, [runHealthCheck, probeDocs]);
 
   const addMessage = useCallback((m) => {
     setMessages((prev) => [...prev, m]);
@@ -490,12 +522,19 @@ export default function App() {
   }, []);
 
   const toggleDoc = useCallback((key) => {
-    setDocs((prev) => ({ ...prev, [key]: !prev[key] }));
+    // ✅ matrix is locked ON
+    if (key === "matrix") return;
+    setDocs((prev) => ({ ...prev, [key]: !prev[key], matrix: true }));
   }, []);
 
   const clearInput = useCallback(() => {
     setInput("");
     textareaRef.current?.focus?.();
+    setBanner(null);
+  }, []);
+
+  const setModeSafe = useCallback((next) => {
+    setMode(next === "local" ? "local" : "cloud");
     setBanner(null);
   }, []);
 
@@ -512,14 +551,44 @@ export default function App() {
       return;
     }
 
-    const enabledCount = DOC_META.reduce((n, d) => n + (docs[d.key] ? 1 : 0), 0);
+    // ✅ always include matrix + only selected docs
+    const docsForPayload = { ...docs, matrix: true };
+
+    // ✅ if user accidentally turned everything off except matrix (or matrix missing), protect:
+    const enabledCount = DOC_META.reduce((n, d) => {
+      const enabled = d.locked ? true : !!docsForPayload[d.key];
+      const available = !!docAvail[d.key];
+      return n + (enabled && available ? 1 : 0);
+    }, 0);
+
     if (enabledCount === 0) {
-      setBanner({ type: "error", title: "📌 No docs selected", sub: "Select at least one document chip." });
+      setBanner({
+        type: "error",
+        title: "📌 No docs available",
+        sub: "Docs are missing/unreachable. Make sure the files exist in client/public and are deployed.",
+      });
       return;
     }
 
-    setBanner(null);
+    // warn if a selected doc is missing
+    const missingSelected = DOC_META.filter((d) => (d.locked ? true : !!docsForPayload[d.key]))
+      .filter((d) => !docAvail[d.key])
+      .map((d) => d.label);
+
+    if (missingSelected.length) {
+      setBanner({
+        type: "error",
+        title: "📁 Missing file(s)",
+        sub: `These selected docs are not reachable: ${missingSelected.join(", ")}.`,
+      });
+      // still allow send (server may load locally); remove return if you want hard-block
+      // return;
+    } else {
+      setBanner(null);
+    }
+
     setIsSending(true);
+
     addMessage({ id: genId(), role: "user", text: question, ts: Date.now() });
     addMessage({
       id: genId(),
@@ -531,13 +600,17 @@ export default function App() {
     });
 
     setInput("");
+
     const payload = buildPayload({
       question,
       mode,
-      docs: { ...docs, _availability: docAvail, _activeDocsLabel: activeDocsLabel },
+      docs: {
+        ...docsForPayload,
+        _availability: docAvail,
+        _activeDocsLabel: activeDocsLabel,
+      },
     });
 
-    // ✅ You are calling Claude endpoint
     const endpoints = ["/api/claude"];
 
     try {
@@ -612,11 +685,7 @@ export default function App() {
         <div className="cc-topbar">
           <div className="cc-navPill">
             <img className="cc-navLogo" src="/HP-logo-gold.png" alt="HotelPlanner" />
-            <button
-              className={`cc-navItem ${resourcesOpen ? "cc-navItemPill is-active" : ""}`}
-              type="button"
-              onClick={() => setResourcesOpen(true)}
-            >
+            <button className={`cc-navItem ${resourcesOpen ? "cc-navItemPill is-active" : ""}`} type="button" onClick={() => setResourcesOpen(true)}>
               Resources
             </button>
             <div className="cc-navTitle">Call Center Compliance Tool</div>
@@ -643,13 +712,9 @@ export default function App() {
                 </div>
                 <div className="cc-heroSub">
                   Server:{" "}
-                  <span style={{ fontWeight: 700 }}>
-                    {health.ok == null ? "checking…" : health.ok ? "online" : "offline"}
-                  </span>
+                  <span style={{ fontWeight: 700 }}>{health.ok == null ? "checking…" : health.ok ? "online" : "offline"}</span>
                   {health.last ? (
-                    <span style={{ marginLeft: 8, color: "rgba(17,24,39,0.45)", fontSize: 12 }}>
-                      ({new Date(health.last).toLocaleTimeString()})
-                    </span>
+                    <span style={{ marginLeft: 8, color: "rgba(17,24,39,0.45)", fontSize: 12 }}>({new Date(health.last).toLocaleTimeString()})</span>
                   ) : null}
                 </div>
               </div>
@@ -667,27 +732,47 @@ export default function App() {
         {/* Footer */}
         <div className="cc-footer">
           <div className="cc-footer-inner">
+            {/* Mode toggle (so you never get stuck in Local unknowingly) */}
+            <div className="cc-modeRow">
+              <button className={`cc-chip ${mode === "cloud" ? "is-active" : ""}`} type="button" onClick={() => setModeSafe("cloud")} aria-pressed={mode === "cloud"}>
+                Cloud
+              </button>
+              <button className={`cc-chip ${mode === "local" ? "is-active" : ""}`} type="button" onClick={() => setModeSafe("local")} aria-pressed={mode === "local"}>
+                Local
+              </button>
+            </div>
+
             <div className="cc-docRow">
               {DOC_META.map((d) => {
-                const active = !!docs[d.key];
+                const locked = !!d.locked;
+                const active = locked ? true : !!docs[d.key];
                 const available = !!docAvail[d.key];
                 const disabled = !available;
+
                 return (
                   <button
                     key={d.key}
-                    className={`cc-chip ${active ? "is-active" : ""}`}
-                    title={disabled ? `${d.label} unavailable` : `Toggle ${d.label}`}
+                    className={`cc-chip ${active ? "is-active" : ""} ${locked ? "is-locked" : ""} ${disabled ? "is-disabled" : ""}`}
+                    title={
+                      locked
+                        ? `${d.label} (always included)`
+                        : disabled
+                        ? `${d.label} unavailable`
+                        : `Toggle ${d.label}`
+                    }
                     onClick={() => {
+                      if (locked) return;
                       if (disabled) {
-                        setBanner({ type: "error", title: "📁 Missing file", sub: `${d.label} not found.` });
+                        setBanner({ type: "error", title: "📁 Missing file", sub: `${d.label} not found or unreachable.` });
                         return;
                       }
                       toggleDoc(d.key);
                     }}
                     style={{ opacity: disabled ? 0.45 : 1 }}
                     type="button"
+                    aria-pressed={active}
                   >
-                    {d.label}
+                    {locked ? `🔒 ${d.label}` : d.label}
                   </button>
                 );
               })}
@@ -702,7 +787,7 @@ export default function App() {
                 ref={textareaRef}
                 className="cc-textarea"
                 value={input}
-                placeholder={`Describe the guest situation… (max ${MAX_USER_INPUT_CHARS} chars)`}
+                placeholder={`Type your question here… (max ${MAX_USER_INPUT_CHARS} chars)`}
                 onChange={(e) => {
                   const next = e.target.value || "";
                   if (next.length <= MAX_USER_INPUT_CHARS) {
@@ -731,7 +816,7 @@ export default function App() {
             </div>
 
             <div className="cc-footer-note">
-              Powered by {CLOUD_PROVIDER_LABEL} • Select documents for context •{" "}
+              Powered by {CLOUD_PROVIDER_LABEL} • Matrix always included •{" "}
               <span style={{ fontWeight: 700 }}>{remainingChars}</span> chars left
             </div>
           </div>
