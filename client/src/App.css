@@ -1,9 +1,3 @@
-/* styles.css — PASTE EXACTLY (NO QUOTES AROUND IT) */
-
-/* browser reset (safe) */
-html, body { height: 100%; }
-body { margin: 0; }
-
 /* ===== Click-fix: never block footer clicks ===== */
 .cc-footer,
 .cc-footer * {
@@ -155,10 +149,6 @@ body { margin: 0; }
 
 /* centered title */
 .cc-navTitle {
-   color: #ff69b4 !important;
-  background: none !important;
-  -webkit-background-clip: initial !important;
-  background-clip: initial !important;
   position: absolute;
   left: 50%;
   top: 50%;
@@ -290,31 +280,16 @@ body { margin: 0; }
   text-align: center;
 }
 
-/* Footer background + border (Valentine) */
-.cc-footer{
-   position: fixed !important;
-  left: 0 !important;
-  right: 0 !important;
-  bottom: 0 !important;
-  z-index: 999 !important;
-  background: rgba(255, 105, 180, 0.12) !important; /* soft pink */
-  border-top: 1px solid rgba(255, 105, 180, 0.22) !important;
+/* ====== Footer ====== */
+.cc-footer {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: #e8f5ff;
+  border-top: 1px solid rgba(17, 24, 39, 0.06);
+  z-index: 60;
 }
-
-/* Optional: footer text tone */
-.cc-footer-note{
-  color: rgba(255, 105, 180, 0.75) !important;
-}
-
-/* Optional: input shell + buttons match */
-.cc-inputShell{
-  border-color: rgba(255, 105, 180, 0.22) !important;
-}
-.cc-sendBtn,
-.cc-iconBtn{
-  border-color: rgba(255, 105, 180, 0.22) !important;
-}
-
 
 .cc-footer-inner {
   max-width: 780px;
@@ -578,6 +553,7 @@ body { margin: 0; }
 .cc-pillBtnGhost {
   background: transparent;
 }
+/* ADD THIS AT THE VERY BOTTOM OF YOUR EXISTING CSS (stronger chip visibility) */
 
 /* Strong active style so you can SEE the click */
 .cc-chip {
@@ -608,207 +584,4 @@ body { margin: 0; }
 .cc-chip:focus-visible {
   outline: 3px solid rgba(191, 149, 63, 0.55);
   outline-offset: 2px;
-}
-
-/* =======================================================================
-   VALENTINE ADD-ON (SAFE)
-   - DOES NOT change any positions / z-index of your layout
-   ======================================================================= */
-
-.cc-root {
-  background-color: #ffffff;
-  background-image:
-    radial-gradient(1100px 520px at 50% -120px, rgba(255,105,180,0.12), transparent 62%),
-    radial-gradient(800px 480px at 12% 12%, rgba(255,0,92,0.06), transparent 60%),
-    radial-gradient(900px 520px at 88% 18%, rgba(255,211,106,0.05), transparent 62%),
-    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160' viewBox='0 0 160 160'%3E%3Cdefs%3E%3CradialGradient id='g' cx='35%25' cy='25%25' r='70%25'%3E%3Cstop offset='0%25' stop-color='%23ffffff' stop-opacity='.62'/%3E%3Cstop offset='45%25' stop-color='%23ff69b4' stop-opacity='.26'/%3E%3Cstop offset='100%25' stop-color='%23ff005c' stop-opacity='.14'/%3E%3C/radialGradient%3E%3C/defs%3E%3Cg fill='url(%23g)'%3E%3Cpath d='M28 50c0-8 6-14 14-14 5 0 10 3 12 7 3-4 7-7 12-7 8 0 14 6 14 14 0 16-17 25-26 35-9-10-26-19-26-35z'/%3E%3Cpath d='M98 112c0-7 5-12 12-12 4 0 8 2 10 6 2-4 6-6 10-6 7 0 12 5 12 12 0 14-14 22-24 32-10-10-24-18-24-32z'/%3E%3C/g%3E%3Cg fill='%23ffd36a' fill-opacity='.10'%3E%3Ccircle cx='18' cy='128' r='2.5'/%3E%3Ccircle cx='142' cy='18' r='2.2'/%3E%3Ccircle cx='138' cy='138' r='2.2'/%3E%3C/g%3E%3C/svg%3E");
-  background-repeat: no-repeat, no-repeat, no-repeat, repeat;
-  background-size: auto, auto, auto, 160px 160px;
-  background-position: center -120px, 12% 12%, 88% 18%, 0 0;
-  animation: cc-heartsBgDrift 22s linear infinite;
-}
-
-@keyframes cc-heartsBgDrift {
-  0%   { background-position: center -120px, 12% 12%, 88% 18%, 0 0; }
-  100% { background-position: center -120px, 12% 12%, 88% 18%, -70px 50px; }
-}
-
-.cc-topbar::after {
-  content: "";
-  position: absolute;
-  inset: -6px;
-  border-radius: 999px;
-  pointer-events: none;
-  background:
-    radial-gradient(circle at 18% 35%, rgba(255,255,255,.85) 0 2px, transparent 3px),
-    radial-gradient(circle at 28% 70%, rgba(255,255,255,.55) 0 1px, transparent 3px),
-    radial-gradient(circle at 62% 30%, rgba(255,255,255,.70) 0 2px, transparent 3px),
-    radial-gradient(circle at 76% 65%, rgba(255,255,255,.45) 0 1px, transparent 3px),
-    radial-gradient(circle at 88% 40%, rgba(255,255,255,.75) 0 2px, transparent 3px);
-  opacity: 0.55;
-  mix-blend-mode: screen;
-  filter: blur(0.2px);
-  animation: cc-sparkle 2.8s ease-in-out infinite;
-}
-
-@keyframes cc-sparkle {
-  0%   { opacity: 0.35; transform: translateY(0) scale(1); }
-  50%  { opacity: 0.70; transform: translateY(-1px) scale(1.01); }
-  100% { opacity: 0.45; transform: translateY(0) scale(1); }
-}
-
-.cc-navItem:hover {
-  filter: drop-shadow(0 0 10px rgba(255,105,180,0.35)) drop-shadow(0 0 6px rgba(255,211,106,0.25)) !important;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .cc-root { animation: none !important; }
-  .cc-topbar::after { animation: none !important; }
-}
-/* PASTE AT VERY BOTTOM — Valentine Topbar (keeps your pill/3D idea, just re-skins it) */
-
-.cc-topbar{
-  /* keep your sizing/positioning from original; only visuals change */
-  background:
-    /* glossy highlight */
-    linear-gradient(180deg, rgba(255,255,255,.18) 0%, rgba(255,255,255,.06) 38%, rgba(0,0,0,.0) 100%),
-    /* candy + velvet */
-    radial-gradient(140% 180% at 18% 10%, rgba(255,105,180,.55) 0%, rgba(255,0,92,.22) 35%, rgba(30,0,18,.92) 100%);
-
-  border: 1px solid rgba(255,105,180,.22);
-
-  box-shadow:
-    inset 0 1px 1px rgba(255, 255, 255, 0.28),
-    inset 0 6px 10px rgba(255, 105, 180, 0.10),
-    inset 0 -8px 14px rgba(0, 0, 0, 0.55),
-    0 18px 34px rgba(73, 0, 38, 0.38),
-    0 6px 16px rgba(0, 0, 0, 0.20);
-
-  backdrop-filter: blur(14px) saturate(1.15);
-  -webkit-backdrop-filter: blur(14px) saturate(1.15);
-}
-
-/* subtle heart confetti INSIDE the pill */
-.cc-topbar::before{
-  content:"";
-  position:absolute;
-  inset: 8px;
-  border-radius: 999px;
-  pointer-events:none;
-  opacity: .22;
-  background-repeat: repeat;
-  background-size: 90px 90px;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='90' height='90' viewBox='0 0 90 90'%3E%3Cg fill='%23ffd1dc' fill-opacity='.55'%3E%3Cpath d='M18 30c0-5 4-9 9-9 3 0 6 2 7 5 2-3 4-5 7-5 5 0 9 4 9 9 0 10-10 15-16 22-6-7-16-12-16-22z'/%3E%3C/g%3E%3Cg fill='%23ffd36a' fill-opacity='.18'%3E%3Ccircle cx='70' cy='18' r='2'/%3E%3Ccircle cx='64' cy='64' r='1.8'/%3E%3C/g%3E%3C/svg%3E");
-  mix-blend-mode: screen;
-  filter: blur(.2px);
-}
-
-/* PASTE AT VERY BOTTOM — Valentine Topbar + TEXT (keeps pill idea, re-skins EVERYTHING) */
-
-/* ===== Valentine pill ===== */
-.cc-topbar{
-  background:
-    linear-gradient(180deg, rgba(255,255,255,.18) 0%, rgba(255,255,255,.06) 38%, rgba(0,0,0,.0) 100%),
-    radial-gradient(140% 180% at 18% 10%, rgba(255,105,180,.58) 0%, rgba(255,0,92,.26) 35%, rgba(30,0,18,.94) 100%);
-  border: 1px solid rgba(255,105,180,.22);
-  box-shadow:
-    inset 0 1px 1px rgba(255,255,255,.28),
-    inset 0 6px 10px rgba(255,105,180,.10),
-    inset 0 -8px 14px rgba(0,0,0,.55),
-    0 18px 34px rgba(73,0,38,.38),
-    0 6px 16px rgba(0,0,0,.20);
-  backdrop-filter: blur(14px) saturate(1.15);
-  -webkit-backdrop-filter: blur(14px) saturate(1.15);
-}
-
-/* heart confetti inside */
-.cc-topbar::before{
-  content:"";
-  position:absolute;
-  inset: 8px;
-  border-radius: 999px;
-  pointer-events:none;
-  opacity: .24;
-  background-repeat: repeat;
-  background-size: 90px 90px;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='90' height='90' viewBox='0 0 90 90'%3E%3Cg fill='%23ffd1dc' fill-opacity='.58'%3E%3Cpath d='M18 30c0-5 4-9 9-9 3 0 6 2 7 5 2-3 4-5 7-5 5 0 9 4 9 9 0 10-10 15-16 22-6-7-16-12-16-22z'/%3E%3C/g%3E%3Cg fill='%23ffffff' fill-opacity='.25'%3E%3Ccircle cx='70' cy='18' r='2'/%3E%3Ccircle cx='64' cy='64' r='1.8'/%3E%3C/g%3E%3C/svg%3E");
-  mix-blend-mode: screen;
-  filter: blur(.2px);
-}
-
-/* sparkles */
-.cc-topbar::after{
-  content:"";
-  position:absolute;
-  inset:-6px;
-  border-radius: 999px;
-  pointer-events:none;
-  background:
-    radial-gradient(circle at 18% 35%, rgba(255,255,255,.90) 0 2px, transparent 3px),
-    radial-gradient(circle at 28% 70%, rgba(255,255,255,.60) 0 1px, transparent 3px),
-    radial-gradient(circle at 62% 30%, rgba(255,255,255,.75) 0 2px, transparent 3px),
-    radial-gradient(circle at 76% 65%, rgba(255,255,255,.50) 0 1px, transparent 3px),
-    radial-gradient(circle at 88% 40%, rgba(255,255,255,.80) 0 2px, transparent 3px);
-  opacity:.55;
-  mix-blend-mode: screen;
-  animation: cc-topbarSparkle 2.8s ease-in-out infinite;
-}
-
-@keyframes cc-topbarSparkle{
-  0%{ opacity:.35; transform: translateY(0) }
-  50%{ opacity:.72; transform: translateY(-1px) }
-  100%{ opacity:.45; transform: translateY(0) }
-}
-
-/* ===== TEXT COLORS (this is the part you asked for) ===== */
-
-/* Center title "Call Center Compliance Tool" */
-.cc-navTitle{
-  background: linear-gradient(90deg, #ffffff 0%, #ffe1ef 28%, #ffd1dc 55%, #fff1b8 78%, #ffd36a 100%);
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
-  filter:
-    drop-shadow(0 2px 0 rgba(0,0,0,.45))
-    drop-shadow(0 0 12px rgba(255,105,180,.22));
-}
-
-/* Left nav items like "Resources" */
-.cc-navItem{
-  background: linear-gradient(90deg, #f50374 0%, #f36bd1 55%, #fb03e3 100%);
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
-  font-weight: 800;
-  text-shadow: none;
-}
-
-/* Hover gets brighter + pink glow */
-.cc-navItem:hover{
-  background: linear-gradient(90deg, #f40404 0%, #ffe1ef 35%, #fff1b8 75%, #ffd36a 100%);
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
-  filter: drop-shadow(0 0 12px rgba(255,105,180,.45));
-}
-
-/* Active underline becomes pink/gold */
-.cc-navItemPill.is-active{
-  box-shadow: 0 2px 0 0 rgba(255, 211, 106, 0.95);
-}
-
-/* CTA text + ring */
-.cc-navItemCTA{
-  background: linear-gradient(90deg, #ffffff 0%, #ffe1ef 30%, #fff1b8 70%, #ffd36a 100%);
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
-}
-.cc-navItemCTA::before{
-  background: linear-gradient(45deg, #ff69b4, #ff005c, #ffd36a, #fff1b8);
-}
-
-/* reduce motion */
-@media (prefers-reduced-motion: reduce){
-  .cc-topbar::after{ animation:none !important; }
 }
