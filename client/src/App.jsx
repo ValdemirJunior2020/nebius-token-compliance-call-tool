@@ -17,13 +17,21 @@ const LOADING_GIF_SRC = "/loading.gif";
 const NAV_LOGO_VIDEO_SRC = "/Video_Generation_Confirmation.mp4";
 const ERROR_VIDEO_SRC = "/error.mp4";
 
-// downloads (public)
-const QA_GROUP_XLSX_PATH = "/qa-group.xlsx";
-const QA_VOICE_XLSX_PATH = "/qa-voice.xlsx";
-const MATRIX_PUBLIC_PATH = "/Service Matrix's 2026.xlsx";
+// ✅ IMPORTANT: all compliance docs are under /public/Assets
+const ASSETS_BASE = "/Assets";
 
-// ✅ Training guide JSON (client/public/hotelplanner_training_guide.json)
-const TRAINING_GUIDE_JSON_PATH = "/hotelplanner_training_guide.json";
+// downloads (public)
+const QA_GROUP_XLSX_PATH = `${ASSETS_BASE}/qa-group.xlsx`;
+const QA_VOICE_XLSX_PATH = `${ASSETS_BASE}/qa-voice.xlsx`;
+
+// ✅ Matrix is XLSX again (you put it back in Assets)
+const MATRIX_PUBLIC_PATH = `${ASSETS_BASE}/Service Matrix's 2026.xlsx`;
+
+// ✅ Training guide JSON
+const TRAINING_GUIDE_JSON_PATH = `${ASSETS_BASE}/hotelplanner_training_guide.json`;
+
+// ✅ RPP Protection Guide JSON
+const RPP_PROTECTION_GUIDE_JSON_PATH = `${ASSETS_BASE}/rpp_protection_guide.json`;
 
 // --- QA Master Intro (fixed text) --------------------------------------------
 const QA_MASTER_INTRO = `I’m ready to assist as your QA Valentine 💖
@@ -227,20 +235,23 @@ class ErrorBoundary extends React.Component {
 const DEFAULT_DOCS = {
   matrix: true, // locked
   trainingGuide: true,
+  rpp: true,
   qaVoice: true,
   qaGroup: false,
 };
 
 const DOC_META = [
-  { key: "matrix", label: "Matrix 2026", path: MATRIX_PUBLIC_PATH, locked: true },
+  { key: "matrix", label: "Service Matrix 2026 (.xlsx)", path: MATRIX_PUBLIC_PATH, locked: true },
   { key: "trainingGuide", label: "Training Guide (JSON)", path: TRAINING_GUIDE_JSON_PATH },
-  { key: "qaVoice", label: "QA Voice", path: QA_VOICE_XLSX_PATH },
-  { key: "qaGroup", label: "QA Groups", path: QA_GROUP_XLSX_PATH },
+  { key: "rpp", label: "RPP Protection Guide (JSON)", path: RPP_PROTECTION_GUIDE_JSON_PATH },
+  { key: "qaVoice", label: "QA Voice (.xlsx)", path: QA_VOICE_XLSX_PATH },
+  { key: "qaGroup", label: "QA Groups (.xlsx)", path: QA_GROUP_XLSX_PATH },
 ];
 
 const RESOURCES = [
   { label: "Service Matrix 2026 (.xlsx)", href: MATRIX_PUBLIC_PATH, fileName: "Service Matrix's 2026.xlsx" },
   { label: "Training Guide (JSON)", href: TRAINING_GUIDE_JSON_PATH, fileName: "hotelplanner_training_guide.json" },
+  { label: "RPP Protection Guide (JSON)", href: RPP_PROTECTION_GUIDE_JSON_PATH, fileName: "rpp_protection_guide.json" },
   { label: "QA Voice (.xlsx)", href: QA_VOICE_XLSX_PATH, fileName: "qa-voice.xlsx" },
   { label: "QA Groups (.xlsx)", href: QA_GROUP_XLSX_PATH, fileName: "qa-group.xlsx" },
 ];
@@ -463,7 +474,6 @@ export default function App() {
     const results = {};
     for (const d of DOC_META) {
       try {
-        // HEAD sometimes blocked by some hosts; fallback to GET if needed
         const head = await fetchWithTimeout(d.path, { method: "HEAD" }, 8000).catch(() => null);
         if (head && head.ok) {
           results[d.key] = true;
@@ -521,8 +531,7 @@ export default function App() {
   }, []);
 
   const toggleDoc = useCallback((key) => {
-    // ✅ matrix is locked ON
-    if (key === "matrix") return;
+    if (key === "matrix") return; // locked
     setDocs((prev) => ({ ...prev, [key]: !prev[key], matrix: true }));
   }, []);
 
@@ -553,7 +562,6 @@ export default function App() {
     // ✅ always include matrix + only selected docs
     const docsForPayload = { ...docs, matrix: true };
 
-    // ✅ if user accidentally turned everything off except matrix (or matrix missing), protect:
     const enabledCount = DOC_META.reduce((n, d) => {
       const enabled = d.locked ? true : !!docsForPayload[d.key];
       const available = !!docAvail[d.key];
@@ -564,12 +572,11 @@ export default function App() {
       setBanner({
         type: "error",
         title: "📌 No docs available",
-        sub: "Docs are missing/unreachable. Make sure the files exist in client/public and are deployed.",
+        sub: "Docs are missing/unreachable. Make sure the files exist in client/public/Assets and are deployed.",
       });
       return;
     }
 
-    // warn if a selected doc is missing
     const missingSelected = DOC_META.filter((d) => (d.locked ? true : !!docsForPayload[d.key]))
       .filter((d) => !docAvail[d.key])
       .map((d) => d.label);
@@ -580,8 +587,6 @@ export default function App() {
         title: "📁 Missing file(s)",
         sub: `These selected docs are not reachable: ${missingSelected.join(", ")}.`,
       });
-      // still allow send (server may load locally); remove return if you want hard-block
-      // return;
     } else {
       setBanner(null);
     }
@@ -731,7 +736,7 @@ export default function App() {
         {/* Footer */}
         <div className="cc-footer">
           <div className="cc-footer-inner">
-            {/* Mode toggle (so you never get stuck in Local unknowingly) */}
+            {/* Mode toggle */}
             <div className="cc-modeRow">
               <button className={`cc-chip ${mode === "cloud" ? "is-active" : ""}`} type="button" onClick={() => setModeSafe("cloud")} aria-pressed={mode === "cloud"}>
                 Cloud
@@ -752,13 +757,7 @@ export default function App() {
                   <button
                     key={d.key}
                     className={`cc-chip ${active ? "is-active" : ""} ${locked ? "is-locked" : ""} ${disabled ? "is-disabled" : ""}`}
-                    title={
-                      locked
-                        ? `${d.label} (always included)`
-                        : disabled
-                        ? `${d.label} unavailable`
-                        : `Toggle ${d.label}`
-                    }
+                    title={locked ? `${d.label} (always included)` : disabled ? `${d.label} unavailable` : `Toggle ${d.label}`}
                     onClick={() => {
                       if (locked) return;
                       if (disabled) {
@@ -815,8 +814,7 @@ export default function App() {
             </div>
 
             <div className="cc-footer-note">
-              Powered by {CLOUD_PROVIDER_LABEL} • Matrix always included •{" "}
-              <span style={{ fontWeight: 700 }}>{remainingChars}</span> chars left
+              Powered by {CLOUD_PROVIDER_LABEL} • Matrix always included • <span style={{ fontWeight: 700 }}>{remainingChars}</span> chars left
             </div>
           </div>
         </div>

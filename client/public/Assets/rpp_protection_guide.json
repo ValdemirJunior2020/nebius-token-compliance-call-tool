@@ -1,0 +1,298 @@
+{
+  "plan": {
+    "name": "Refund Protection Plan",
+    "acronym": "RPP",
+    "provider": "HotelPlanner",
+    "document": {
+      "title": "Protection Guide",
+      "confidential": true,
+      "as_of_date": "2023-01-19",
+      "source": "Image provided by user",
+      "disclaimer": "This guide is being provided for informational purposes only and does not supersede the policy wording provided to you upon purchase, which is the sole source of the available benefits and is the governing document."
+    }
+  },
+  "categories": [
+    {
+      "id": "personal_health_family",
+      "name": "Personal, Health & Family",
+      "description": "Events affecting the guest, companion, or immediate family that prevent attending the stay."
+    },
+    {
+      "id": "travel_transportation",
+      "name": "Travel & Transportation",
+      "description": "Travel disruptions or incidents impacting the ability to arrive for the stay."
+    },
+    {
+      "id": "home_property",
+      "name": "Home & Property",
+      "description": "Home-related emergencies or incidents requiring the guest’s attention."
+    },
+    {
+      "id": "work_legal",
+      "name": "Work & Legal",
+      "description": "Work or legal obligations/conflicts preventing attendance."
+    },
+    {
+      "id": "security_fraud",
+      "name": "Security & Fraud",
+      "description": "Theft or fraud events tied to the booking or vehicle."
+    },
+    {
+      "id": "other",
+      "name": "Other",
+      "description": "Coverage reasons that do not fit cleanly into other categories."
+    }
+  ],
+  "coverage_reasons": [
+    {
+      "id": "active_military_duty",
+      "title": "Active Military Duty",
+      "category_id": "work_legal",
+      "covered_parties": ["hotel_guest", "companion", "immediate_family_member"],
+      "trigger_summary": "Active duty military status change impacting approved personal time off.",
+      "time_window": null,
+      "policy_text": "Hotel Guest, a companion, or an immediate family member, who are on active military duty, having their personal time off status changed.",
+      "keywords": ["military", "active duty", "orders", "pto changed", "leave cancelled"]
+    },
+    {
+      "id": "automobile_theft",
+      "title": "Automobile Theft",
+      "category_id": "security_fraud",
+      "covered_parties": ["hotel_guest"],
+      "trigger_summary": "Theft of the hotel guest’s automobile shortly before the stay prevents attending.",
+      "time_window": {
+        "value": 48,
+        "unit": "hours",
+        "relative_to": "start_of_stay"
+      },
+      "policy_text": "Theft of Hotel Guest's automobile within 48 hours of the Stay that results in inability to attend the Stay.",
+      "keywords": ["car theft", "vehicle stolen", "auto stolen", "within 48 hours"]
+    },
+    {
+      "id": "complications_of_pregnancy",
+      "title": "Complications of Pregnancy",
+      "category_id": "personal_health_family",
+      "covered_parties": ["hotel_guest", "companion"],
+      "trigger_summary": "A physician advises the hotel guest or companion not to attend due to pregnancy complications.",
+      "time_window": null,
+      "policy_text": "Hotel Guest or their companion have been advised by a physician due to complications of pregnancy to not attend the Stay.",
+      "keywords": ["pregnancy", "complications", "doctor advised", "physician", "not to travel"]
+    },
+    {
+      "id": "family_member_or_companion_death",
+      "title": "Family Member or Companion Death",
+      "category_id": "personal_health_family",
+      "covered_parties": ["family_member", "companion"],
+      "trigger_summary": "Death of a family member or companion shortly before the stay.",
+      "time_window": {
+        "value": 30,
+        "unit": "days",
+        "relative_to": "start_of_stay",
+        "direction": "prior"
+      },
+      "policy_text": "The death of a family member or companion within 30 days prior to the Stay.",
+      "keywords": ["death", "bereavement", "funeral", "within 30 days"]
+    },
+    {
+      "id": "family_members_childbirth",
+      "title": "Family Member's Childbirth",
+      "category_id": "personal_health_family",
+      "covered_parties": ["immediate_family_member"],
+      "trigger_summary": "Hotel guest attends an immediate family member’s childbirth at the time of the stay.",
+      "time_window": null,
+      "policy_text": "Hotel Guest will be attending an immediate family member's childbirth at the time of the Stay.",
+      "keywords": ["childbirth", "delivery", "labor", "new baby", "immediate family"]
+    },
+    {
+      "id": "home_uninhabitable",
+      "title": "Home Uninhabitable",
+      "category_id": "home_property",
+      "covered_parties": ["hotel_guest"],
+      "trigger_summary": "Home becomes uninhabitable due to listed incidents.",
+      "time_window": null,
+      "policy_text": "Fire, Flood, Burglary, Vandalism and Natural Disaster causes home to be Uninhabitable.",
+      "keywords": ["home uninhabitable", "fire", "flood", "burglary", "vandalism", "natural disaster"]
+    },
+    {
+      "id": "injury_illness_family_member",
+      "title": "Injury/Illness - Family Member",
+      "category_id": "personal_health_family",
+      "covered_parties": ["immediate_family_member"],
+      "trigger_summary": "Serious injury or illness occurs to hotel guest’s immediate family member.",
+      "time_window": null,
+      "policy_text": "Serious injury or illness occurring to Hotel Guest's immediate family member.",
+      "keywords": ["family illness", "family injury", "serious illness", "immediate family"]
+    },
+    {
+      "id": "injury_illness_you_or_companion",
+      "title": "Injury/Illness - You or Companion",
+      "category_id": "personal_health_family",
+      "covered_parties": ["hotel_guest", "companion"],
+      "trigger_summary": "Serious injury or illness occurs to the guest or companion (includes COVID positive test).",
+      "time_window": null,
+      "policy_text": "Serious injury or illness occurring to You or a Companion (including but not limited to testing positive for COVID).",
+      "keywords": ["illness", "injury", "medical", "covid", "positive test", "companion sick"]
+    },
+    {
+      "id": "jury_duty",
+      "title": "Jury Duty",
+      "category_id": "work_legal",
+      "covered_parties": ["hotel_guest"],
+      "trigger_summary": "Guest is required to appear in court (jury duty, subpoena, or court order).",
+      "time_window": null,
+      "policy_text": "Hotel Guest is required to appear in court for Jury Duty, Subpoena or Court Order.",
+      "keywords": ["jury duty", "subpoena", "court order", "required to appear"]
+    },
+    {
+      "id": "layoffs",
+      "title": "Layoffs",
+      "category_id": "work_legal",
+      "covered_parties": ["hotel_guest", "companion"],
+      "trigger_summary": "Job layoff impacts hotel guest or companion.",
+      "time_window": null,
+      "policy_text": "Job layoff for Hotel Guest or Companion.",
+      "keywords": ["layoff", "job loss", "terminated", "unemployed"]
+    },
+    {
+      "id": "mechanical_breakdown",
+      "title": "Mechanical Breakdown",
+      "category_id": "travel_transportation",
+      "covered_parties": ["hotel_guest", "companion"],
+      "trigger_summary": "Guest or companion’s automobile has a mechanical breakdown shortly before the stay.",
+      "time_window": {
+        "value": 48,
+        "unit": "hours",
+        "relative_to": "start_of_stay"
+      },
+      "policy_text": "Hotel Guest or a companion’s automobile having a mechanical breakdown within 48 hours of the Stay.",
+      "keywords": ["mechanical breakdown", "car broke down", "vehicle breakdown", "within 48 hours"]
+    },
+    {
+      "id": "relocation",
+      "title": "Relocation",
+      "category_id": "work_legal",
+      "covered_parties": ["hotel_guest", "spouse"],
+      "trigger_summary": "Relocation required of the guest or spouse more than 100 miles from primary residence.",
+      "time_window": null,
+      "policy_text": "Relocation required of You or Spouse more than 100 miles from primary residence.",
+      "keywords": ["relocation", "moved", "transfer", "100 miles", "primary residence"]
+    },
+    {
+      "id": "stolen_bookings",
+      "title": "Stolen Bookings",
+      "category_id": "security_fraud",
+      "covered_parties": ["hotel_guest", "companion"],
+      "trigger_summary": "Hotel guest’s or companion’s booking is stolen.",
+      "time_window": null,
+      "policy_text": "Hotel Guest or a companion’s booking being stolen.",
+      "keywords": ["stolen booking", "booking stolen", "fraud", "account hacked"]
+    },
+    {
+      "id": "traffic_accident",
+      "title": "Traffic Accident",
+      "category_id": "travel_transportation",
+      "covered_parties": ["hotel_guest", "companion"],
+      "trigger_summary": "Hotel guest or companion is directly involved in a traffic accident shortly before the stay.",
+      "time_window": {
+        "value": 48,
+        "unit": "hours",
+        "relative_to": "start_of_stay"
+      },
+      "policy_text": "Hotel Guest or a companion being directly involved in a traffic accident within 48 hours of the Stay.",
+      "keywords": ["traffic accident", "car accident", "crash", "within 48 hours"]
+    },
+    {
+      "id": "traffic_accident_on_the_way_to_travel_carrier",
+      "title": "Traffic Accident on the Way to Travel Carrier",
+      "category_id": "travel_transportation",
+      "covered_parties": ["hotel_guest", "companion", "immediate_family_member"],
+      "trigger_summary": "Miss the stay due to a traffic accident while en route to a travel carrier.",
+      "time_window": null,
+      "policy_text": "Hotel Guest, a companion, or an immediate family member miss the Stay due to a traffic accident enroute to a travel carrier.",
+      "keywords": ["traffic accident", "en route", "to airport", "to station", "travel carrier"]
+    },
+    {
+      "id": "travel_carrier_delay",
+      "title": "Travel Carrier Delay",
+      "category_id": "travel_transportation",
+      "covered_parties": ["hotel_guest", "companion"],
+      "trigger_summary": "Not arriving at the venue due to a delay by the travel carrier used for transportation.",
+      "time_window": null,
+      "policy_text": "Hotel Guest or a companion not arriving at the venue due to a delay by the travel carrier used for transportation.",
+      "keywords": ["flight delay", "train delay", "bus delay", "carrier delay", "missed arrival"]
+    },
+    {
+      "id": "unforeseen_severe_weather",
+      "title": "Unforeseen Severe Weather",
+      "category_id": "travel_transportation",
+      "covered_parties": ["hotel_guest"],
+      "trigger_summary": "Severe weather conditions prevent the guest from attending the stay.",
+      "time_window": null,
+      "policy_text": "Severe weather conditions which result in Hotel Guest's inability to attend the Stay.",
+      "keywords": ["severe weather", "storm", "hurricane", "blizzard", "cannot attend"]
+    },
+    {
+      "id": "urgent_home_repair",
+      "title": "Urgent Home Repair",
+      "category_id": "home_property",
+      "covered_parties": ["hotel_guest"],
+      "trigger_summary": "Urgent home repair requires the guest to be present during the repair.",
+      "time_window": null,
+      "policy_text": "Urgent home repair that requires Hotel Guest to be present during the repair.",
+      "keywords": ["urgent repair", "home repair", "plumber", "electrician", "must be present"]
+    },
+    {
+      "id": "weather_emergency",
+      "title": "Weather Emergency",
+      "category_id": "travel_transportation",
+      "covered_parties": ["hotel_guest"],
+      "trigger_summary": "Weather emergency occurs shortly before the stay.",
+      "time_window": {
+        "value": 24,
+        "unit": "hours",
+        "relative_to": "start_of_stay"
+      },
+      "policy_text": "Weather emergency within 24 hours of the Stay.",
+      "keywords": ["weather emergency", "within 24 hours", "evacuation", "warning"]
+    },
+    {
+      "id": "work_related_travel_conflict",
+      "title": "Work-Related Travel Conflict",
+      "category_id": "work_legal",
+      "covered_parties": ["hotel_guest"],
+      "trigger_summary": "A work-related travel conflict prevents attending the stay.",
+      "time_window": null,
+      "policy_text": "Work-related travel conflict.",
+      "keywords": ["work travel", "business trip", "schedule conflict", "work conflict"]
+    },
+    {
+      "id": "hotel_guest_death",
+      "title": "Hotel Guest Death",
+      "category_id": "personal_health_family",
+      "covered_parties": ["hotel_guest"],
+      "trigger_summary": "Hotel guest’s death prior to the stay.",
+      "time_window": null,
+      "policy_text": "Hotel Guest's death prior to the Stay.",
+      "keywords": ["guest death", "death prior to stay"]
+    }
+  ],
+  "ai_helper_hints": {
+    "matching_rules": {
+      "preferred_match_order": [
+        "exact_title_match",
+        "keyword_match",
+        "time_window_match",
+        "covered_parties_match"
+      ],
+      "notes": "Use the policy_text as the authoritative description for each coverage reason. This JSON reflects the guide; the governing policy wording controls final benefits."
+    },
+    "keyword_to_ids_examples": {
+      "covid": ["injury_illness_you_or_companion"],
+      "jury": ["jury_duty"],
+      "flight delay": ["travel_carrier_delay"],
+      "hurricane": ["unforeseen_severe_weather", "weather_emergency"],
+      "car stolen": ["automobile_theft"],
+      "booking stolen": ["stolen_bookings"]
+    }
+  }
+}
