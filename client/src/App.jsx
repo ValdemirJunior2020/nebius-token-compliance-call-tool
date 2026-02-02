@@ -685,15 +685,21 @@ export default function App() {
   return (
     <ErrorBoundary>
       <div className="cc-root">
-        {/* NAVBAR */}
+  {/* NAVBAR */}
         <div className="cc-topbar">
           <div className="cc-navPill">
-            <img className="cc-navLogo" src="/HP-logo-gold.png" alt="HotelPlanner" />
+            
+            {/* CORRECTED: Points to your actual file 'hp-logo.png' */}
+            <img className="cc-navLogo" src="/hp-logo.png" alt="HotelPlanner" />
+            
             <button className={`cc-navItem ${resourcesOpen ? "cc-navItemPill is-active" : ""}`} type="button" onClick={() => setResourcesOpen(true)}>
               Resources
             </button>
+            
             <div className="cc-navTitle">Call Center Compliance Tool</div>
+            
             <div className="cc-navSpacer" />
+
           </div>
         </div>
 

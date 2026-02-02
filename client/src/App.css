@@ -1,19 +1,26 @@
+/* =========================================
+   BLUE LOGO THEME (CLEAN & PROFESSIONAL)
+   ========================================= */
+
+/* Import the Fancy Font */
+@import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600;700;800&display=swap');
+
 /* ===== Click-fix: never block footer clicks ===== */
 .cc-footer,
 .cc-footer * {
   pointer-events: auto !important;
 }
 
-/* ====== Layout ====== */
+/* ====== Layout (Clean White) ====== */
 .cc-root {
   min-height: 100vh;
   background: #ffffff;
   color: #111827;
-  font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji",
-    "Segoe UI Emoji";
+  font-family: 'Montserrat', system-ui, -apple-system, sans-serif;
+  letter-spacing: -0.02em;
 }
 
-/* ====== Topbar (Pill Navbar) ====== */
+/* ====== Topbar (Navy Blue 3D Pipe) ====== */
 .cc-topbar {
   position: fixed;
   top: 14px;
@@ -23,26 +30,27 @@
   height: 62px;
   z-index: 80;
 
-  border-radius: 999px; /* Essential for round pipe ends */
+  border-radius: 999px;
   padding: 10px;
 
-  /* --- THE 3D "PIPE" EFFECT --- */
+  /* --- THE NAVY BLUE 3D PIPE --- */
   background: linear-gradient(
     to bottom,
-    #000000 0%,
-    #5a5a5a 15%,
-    #1a1a1a 45%,
-    #000000 80%,
-    #1a1a1a 100%
+    #05203d 0%,   /* Dark Navy Shadow */
+    #1d4e80 15%,  /* Lighter Highlight */
+    #0E3966 45%,  /* Main Navy Blue */
+    #05203d 80%,  /* Dark Shadow */
+    #0E3966 100%
   );
 
   border: none;
 
+  /* Blue-toned Shadows */
   box-shadow:
-    inset 0 1px 1px rgba(255, 255, 255, 0.3),
+    inset 0 1px 1px rgba(255, 255, 255, 0.2),
     inset 0 4px 6px rgba(255, 255, 255, 0.1),
-    inset 0 -5px 8px rgba(0, 0, 0, 0.7),
-    0 14px 28px rgba(0, 0, 0, 0.6);
+    inset 0 -5px 8px rgba(0, 0, 0, 0.5),
+    0 14px 28px rgba(14, 57, 102, 0.25);
 
   backdrop-filter: blur(14px);
   -webkit-backdrop-filter: blur(14px);
@@ -56,115 +64,83 @@
   border-radius: 999px;
   display: flex;
   align-items: center;
-  gap: 14px;
+  gap: 10px;
   padding: 0 14px;
 }
-
-/* BIGGER LOGO */
+/* ====== BIGGER LOGO CSS ====== */
 .cc-navLogo {
-  width: 120px;
-  height: 120px;
-  border-radius: 999px;
-  object-fit: contain;
-  background: transparent;
-  border: none;
-  padding: 8px;
-  flex: 0 0 auto;
-  margin-top: -24px;
-  margin-bottom: -24px;
+  /* 1. CONTROLS THE SIZE (Increase this number to make it bigger) */
+  height: 52px !important;  
+  
+  /* 2. KEEPS THE SHAPE CORRECT */
+  width: auto !important;
+  object-fit: contain !important;
+  
+  /* 3. ADDS SPACE (So it doesn't overlap the "Call Center" text) */
+  margin-right: 20px !important;
+  
+  /* Standard settings to keep it visible */
+  background: transparent !important;
+  border: none !important;
+  display: block !important;
+  position: relative !important;
+  z-index: 101 !important;
 }
 
-/* ====== Nav Item (Resources, etc.) ====== */
+/* ====== Nav Item (Light Blue Text) ====== */
 .cc-navItem {
   appearance: none;
   border: 0;
   background: transparent;
 
-  /* gold gradient text */
-  background: linear-gradient(to right, #FCF6BA, #BF953F);
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
+  /* Light Sky Blue Text */
+  color: #4CA0FA;
 
   font-size: 18px;
   font-weight: 700;
   padding: 10px 14px;
   cursor: pointer;
   text-decoration: none;
-
-  transition: transform 120ms ease, filter 200ms ease;
+  flex: 0 0 auto;
 }
 
 .cc-navItem:hover {
   background: none;
-  transform: translateY(-1px);
-  filter: drop-shadow(0 0 8px rgba(255, 215, 0, 0.6));
+  opacity: 0.8;
 }
 
-/* Active State: Gold Underline */
+/* Active State: Blue Underline */
 .cc-navItemPill.is-active {
   background: none;
-  box-shadow: 0 2px 0 0 #BF953F;
+  box-shadow: 0 2px 0 0 #4CA0FA;
 }
 
 .cc-navSpacer {
   flex: 1;
 }
 
-/* CTA gradient ring */
-.cc-navItemCTA {
-  position: relative;
-  padding: 10px 24px;
-
-  background: linear-gradient(to right, #FCF6BA, #BF953F);
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
-  font-weight: 700;
-
-  box-shadow: inset 0 0 0 1px rgba(255, 215, 0, 0.1);
-}
-
-.cc-navItemCTA::before {
-  content: "";
-  position: absolute;
-  inset: -2px;
-  border-radius: 999px;
-  background: linear-gradient(45deg, #BF953F, #FCF6BA, #B38728, #FBF5B7);
-  z-index: -1;
-}
-
-.cc-navItemCTA::after {
-  content: "";
-  position: absolute;
-  inset: 2px;
-  border-radius: 999px;
-  background: linear-gradient(180deg, #222 0%, #000 100%);
-  z-index: -1;
-}
-
 .cc-title {
   display: none;
 }
 
-/* centered title */
+/* ====== Centered Title (Light Blue) ====== */
 .cc-navTitle {
   position: absolute;
   left: 50%;
   top: 50%;
   transform: translate(-50%, -50%);
 
+  font-family: 'Montserrat', sans-serif;
   font-size: 26px;
   font-weight: 800;
+  letter-spacing: -0.5px;
   white-space: nowrap;
   pointer-events: none;
 
-  background: linear-gradient(to right, #BF953F, #FCF6BA, #B38728, #FBF5B7, #AA771C);
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
-
-  filter: drop-shadow(0 2px 0px rgba(0, 0, 0, 0.5));
+  background: transparent;
+  /* Light Sky Blue Text */
+  color: #4CA0FA !important; 
+  z-index: 90;
 }
 
 /* ====== Main ====== */
@@ -280,13 +256,13 @@
   text-align: center;
 }
 
-/* ====== Footer ====== */
+/* ====== Footer (Light Blue Tint) ====== */
 .cc-footer {
   position: fixed;
   left: 0;
   right: 0;
   bottom: 0;
-  background: #e8f5ff;
+  background: #e8f5ff; /* Light Blue Background */
   border-top: 1px solid rgba(17, 24, 39, 0.06);
   z-index: 60;
 }
@@ -324,10 +300,13 @@
   background: #ffffff;
 }
 
+/* Active Chip: Navy Blue Background, Light Blue Text */
 .cc-chip.is-active {
-  border-color: rgba(17, 24, 39, 0.18);
-  color: rgba(17, 24, 39, 0.88);
-  background: #ffffff;
+  background: linear-gradient(to right, #0E3966, #05203d);
+  color: #4CA0FA !important;
+  border-color: rgba(76, 160, 250, 0.65) !important;
+  box-shadow: 0 10px 22px rgba(14, 57, 102, 0.25), inset 0 0 0 1px rgba(76, 160, 250, 0.20);
+  font-weight: 800;
 }
 
 .cc-inputShell {
@@ -553,35 +532,21 @@
 .cc-pillBtnGhost {
   background: transparent;
 }
-/* ADD THIS AT THE VERY BOTTOM OF YOUR EXISTING CSS (stronger chip visibility) */
 
-/* Strong active style so you can SEE the click */
+/* ====== Chip Animation ====== */
 .cc-chip {
   transition: transform 120ms ease, box-shadow 140ms ease, background 140ms ease, border-color 140ms ease, color 140ms ease;
 }
-
 .cc-chip:active {
   transform: translateY(1px);
 }
-
-.cc-chip.is-active {
-  background: linear-gradient(to right, #1a1a1a, #000000);
-  color: #ffd36a !important;
-  border-color: rgba(255, 211, 106, 0.65) !important;
-  box-shadow: 0 10px 22px rgba(0, 0, 0, 0.12), inset 0 0 0 1px rgba(255, 211, 106, 0.20);
-  font-weight: 800;
-}
-
 .cc-chip.is-locked {
   cursor: default;
 }
-
 .cc-chip.is-disabled {
   cursor: not-allowed;
 }
-
-/* Optional: outline focus for keyboard + clarity */
 .cc-chip:focus-visible {
-  outline: 3px solid rgba(191, 149, 63, 0.55);
+  outline: 3px solid rgba(76, 160, 250, 0.55);
   outline-offset: 2px;
 }
