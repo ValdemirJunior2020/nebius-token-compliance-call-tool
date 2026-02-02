@@ -290,16 +290,31 @@ body { margin: 0; }
   text-align: center;
 }
 
-/* ====== Footer ====== */
-.cc-footer {
-  position: fixed;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: #e8f5ff;
-  border-top: 1px solid rgba(17, 24, 39, 0.06);
-  z-index: 60;
+/* Footer background + border (Valentine) */
+.cc-footer{
+   position: fixed !important;
+  left: 0 !important;
+  right: 0 !important;
+  bottom: 0 !important;
+  z-index: 999 !important;
+  background: rgba(255, 105, 180, 0.12) !important; /* soft pink */
+  border-top: 1px solid rgba(255, 105, 180, 0.22) !important;
 }
+
+/* Optional: footer text tone */
+.cc-footer-note{
+  color: rgba(255, 105, 180, 0.75) !important;
+}
+
+/* Optional: input shell + buttons match */
+.cc-inputShell{
+  border-color: rgba(255, 105, 180, 0.22) !important;
+}
+.cc-sendBtn,
+.cc-iconBtn{
+  border-color: rgba(255, 105, 180, 0.22) !important;
+}
+
 
 .cc-footer-inner {
   max-width: 780px;
