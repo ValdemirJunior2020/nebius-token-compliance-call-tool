@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { marked } from "marked";
 import "./App.css";
+import ReviewsPage from "./components/Reviews/ReviewsPage.jsx";
 
 // LOCAL TESTING: http://localhost:5050
 // PRODUCTION: https://your-render-app.onrender.com
@@ -231,7 +232,6 @@ class ErrorBoundary extends React.Component {
 }
 
 // --- UI Configuration ---------------------------------------------------------
-// ✅ Matrix is ALWAYS included (locked ON). Buttons choose extra docs.
 const DEFAULT_DOCS = {
   matrix: true, // locked
   trainingGuide: true,
@@ -410,22 +410,24 @@ export default function App() {
   const textareaRef = useRef(null);
   const threadEndRef = useRef(null);
 
-  // ✅ stop random "local" mode stuck in localStorage
+  const [activePage, setActivePage] = useState(() => {
+    const saved = tryLoadLocal("cc_activePage", "chat");
+    return saved === "reviews" ? "reviews" : "chat";
+  });
+
   const [mode, setMode] = useState(() => {
     const saved = tryLoadLocal("cc_mode", "cloud");
     return saved === "local" || saved === "cloud" ? saved : "cloud";
   });
 
-  // docs state (matrix always true)
   const [docs, setDocs] = useState(() => {
     const saved = tryLoadLocal("cc_docs", DEFAULT_DOCS);
     return { ...DEFAULT_DOCS, ...(saved || {}), matrix: true };
   });
 
-  // availability (real check)
   const [docAvail, setDocAvail] = useState(() =>
     DOC_META.reduce((acc, d) => {
-      acc[d.key] = true; // optimistic until probed
+      acc[d.key] = true;
       return acc;
     }, {})
   );
@@ -437,12 +439,7 @@ export default function App() {
   const [resourcesOpen, setResourcesOpen] = useState(false);
 
   const [messages, setMessages] = useState(() => [
-    {
-      id: genId(),
-      role: "assistant",
-      text: QA_MASTER_INTRO,
-      ts: Date.now(),
-    },
+    { id: genId(), role: "assistant", text: QA_MASTER_INTRO, ts: Date.now() },
   ]);
 
   useAutoResizeTextarea(textareaRef, input);
@@ -463,13 +460,13 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    scrollToBottom();
-  }, [messages, scrollToBottom]);
+    if (activePage === "chat") scrollToBottom();
+  }, [messages, scrollToBottom, activePage]);
 
   useEffect(() => trySaveLocal("cc_mode", mode), [mode]);
   useEffect(() => trySaveLocal("cc_docs", { ...docs, matrix: true }), [docs]);
+  useEffect(() => trySaveLocal("cc_activePage", activePage), [activePage]);
 
-  // ✅ probe which docs exist (so chips can disable + show clear banner)
   const probeDocs = useCallback(async () => {
     const results = {};
     for (const d of DOC_META) {
@@ -488,7 +485,6 @@ export default function App() {
     setDocAvail((prev) => ({ ...prev, ...results }));
   }, []);
 
-  // Check server health
   const runHealthCheck = useCallback(async () => {
     try {
       const url = `${API_BASE.replace(/\/+$/, "")}/health`;
@@ -546,6 +542,7 @@ export default function App() {
     setBanner(null);
   }, []);
 
+  // ✅ FIX #1: SEND FUNCTION RESTORED (your earlier version got replaced by an empty send)
   const send = useCallback(async () => {
     const question = normalizeWs(input);
     if (!question || isSending) return;
@@ -559,7 +556,6 @@ export default function App() {
       return;
     }
 
-    // ✅ always include matrix + only selected docs
     const docsForPayload = { ...docs, matrix: true };
 
     const enabledCount = DOC_META.reduce((n, d) => {
@@ -685,145 +681,177 @@ export default function App() {
   return (
     <ErrorBoundary>
       <div className="cc-root">
-  {/* NAVBAR */}
+        {/* NAVBAR */}
         <div className="cc-topbar">
           <div className="cc-navPill">
-            
-            {/* CORRECTED: Points to your actual file 'hp-logo.png' */}
             <img className="cc-navLogo" src="/hp-logo.png" alt="HotelPlanner" />
-            
-            <button className={`cc-navItem ${resourcesOpen ? "cc-navItemPill is-active" : ""}`} type="button" onClick={() => setResourcesOpen(true)}>
+
+            <button
+              className={`cc-navItem ${activePage === "chat" ? "cc-navItemPill is-active" : ""}`}
+              type="button"
+              onClick={() => {
+                setActivePage("chat");
+                setResourcesOpen(false);
+              }}
+            >
+              Chat
+            </button>
+
+            <button
+              className={`cc-navItem ${activePage === "reviews" ? "cc-navItemPill is-active" : ""}`}
+              type="button"
+              onClick={() => {
+                setActivePage("reviews");
+                setResourcesOpen(false);
+              }}
+            >
+              Reviews
+            </button>
+
+            <button
+              className={`cc-navItem ${resourcesOpen ? "cc-navItemPill is-active" : ""}`}
+              type="button"
+              onClick={() => setResourcesOpen(true)}
+            >
               Resources
             </button>
-            
-            <div className="cc-navTitle">Call Center Compliance Tool</div>
-            
-            <div className="cc-navSpacer" />
 
+            {/* ✅ CCCT block */}
+            <div className="cc-navTitle">
+              <div className="cc-navTitleMain">CCCT</div>
+              <div className="cc-navTitleSub">CALL CENTER COMPLIANCE TOOL</div>
+            </div>
+
+            <div className="cc-navSpacer" />
           </div>
         </div>
 
         <ResourcePopover open={resourcesOpen} onClose={() => setResourcesOpen(false)} />
 
-        {/* Main Content */}
-        <div className="cc-main">
-          <div className="cc-thread">
-            <div className="cc-threadInner">
-              {banner ? (
-                <div className="cc-bannerError">
-                  <div style={{ fontWeight: 700 }}>{banner.title}</div>
-                  <div className="cc-bannerSub">{banner.sub}</div>
-                </div>
-              ) : null}
-
-              <div className="cc-hero">
-                <div className="cc-heroTitle">
-                  Mode: <b>{mode === "cloud" ? CLOUD_PROVIDER_LABEL : "Local"}</b> • Docs: <b>{activeDocsLabel}</b>
-                </div>
-                <div className="cc-heroSub">
-                  Server:{" "}
-                  <span style={{ fontWeight: 700 }}>{health.ok == null ? "checking…" : health.ok ? "online" : "offline"}</span>
-                  {health.last ? (
-                    <span style={{ marginLeft: 8, color: "rgba(17,24,39,0.45)", fontSize: 12 }}>({new Date(health.last).toLocaleTimeString()})</span>
+        {/* ✅ PAGE SWITCH */}
+        {activePage === "reviews" ? (
+          <div className="cc-main">
+            <div className="cc-thread">
+              <div className="cc-threadInner">
+                <ReviewsPage />
+              </div>
+            </div>
+          </div>
+        ) : (
+          <>
+            {/* Main Content (Chat) */}
+            <div className="cc-main">
+              <div className="cc-thread">
+                <div className="cc-threadInner">
+                  {banner ? (
+                    <div className="cc-bannerError">
+                      <div style={{ fontWeight: 700 }}>{banner.title}</div>
+                      <div className="cc-bannerSub">{banner.sub}</div>
+                    </div>
                   ) : null}
+
+                  <div className="cc-hero">
+                    <div className="cc-heroTitle">
+                      Mode: <b>{mode === "cloud" ? CLOUD_PROVIDER_LABEL : "Local"}</b> • Docs: <b>{activeDocsLabel}</b>
+                    </div>
+                    <div className="cc-heroSub">
+                      Server:{" "}
+                      <span style={{ fontWeight: 700 }}>{health.ok == null ? "checking…" : health.ok ? "online" : "offline"}</span>
+                      {health.last ? (
+                        <span style={{ marginLeft: 8, color: "rgba(17,24,39,0.45)", fontSize: 12 }}>
+                          ({new Date(health.last).toLocaleTimeString()})
+                        </span>
+                      ) : null}
+                    </div>
+                  </div>
+
+                  {messages.map((m) => (
+                    <MessageBubble key={m.id} m={m} isIntro={m.id === firstAssistantId} />
+                  ))}
+
+                  <div ref={threadEndRef} />
+                  <div className="cc-spacer" />
                 </div>
               </div>
-
-              {messages.map((m) => (
-                <MessageBubble key={m.id} m={m} isIntro={m.id === firstAssistantId} />
-              ))}
-
-              <div ref={threadEndRef} />
-              <div className="cc-spacer" />
-            </div>
-          </div>
-        </div>
-
-        {/* Footer */}
-        <div className="cc-footer">
-          <div className="cc-footer-inner">
-            {/* Mode toggle */}
-            <div className="cc-modeRow">
-              <button className={`cc-chip ${mode === "cloud" ? "is-active" : ""}`} type="button" onClick={() => setModeSafe("cloud")} aria-pressed={mode === "cloud"}>
-                Cloud
-              </button>
-              <button className={`cc-chip ${mode === "local" ? "is-active" : ""}`} type="button" onClick={() => setModeSafe("local")} aria-pressed={mode === "local"}>
-                Local
-              </button>
             </div>
 
-            <div className="cc-docRow">
-              {DOC_META.map((d) => {
-                const locked = !!d.locked;
-                const active = locked ? true : !!docs[d.key];
-                const available = !!docAvail[d.key];
-                const disabled = !available;
-
-                return (
-                  <button
-                    key={d.key}
-                    className={`cc-chip ${active ? "is-active" : ""} ${locked ? "is-locked" : ""} ${disabled ? "is-disabled" : ""}`}
-                    title={locked ? `${d.label} (always included)` : disabled ? `${d.label} unavailable` : `Toggle ${d.label}`}
-                    onClick={() => {
-                      if (locked) return;
-                      if (disabled) {
-                        setBanner({ type: "error", title: "📁 Missing file", sub: `${d.label} not found or unreachable.` });
-                        return;
-                      }
-                      toggleDoc(d.key);
-                    }}
-                    style={{ opacity: disabled ? 0.45 : 1 }}
-                    type="button"
-                    aria-pressed={active}
-                  >
-                    {locked ? `🔒 ${d.label}` : d.label}
+            {/* Footer (Chat only) */}
+            <div className="cc-footer">
+              <div className="cc-footer-inner">
+                <div className="cc-modeRow">
+                  <button className={`cc-chip ${mode === "cloud" ? "is-active" : ""}`} type="button" onClick={() => setModeSafe("cloud")}>
+                    Cloud
                   </button>
-                );
-              })}
+                  <button className={`cc-chip ${mode === "local" ? "is-active" : ""}`} type="button" onClick={() => setModeSafe("local")}>
+                    Local
+                  </button>
+                </div>
+
+                <div className="cc-docRow">
+                  {DOC_META.map((d) => {
+                    const locked = !!d.locked;
+                    const active = locked ? true : !!docs[d.key];
+                    const available = !!docAvail[d.key];
+                    const disabled = !available;
+
+                    return (
+                      <button
+                        key={d.key}
+                        className={`cc-chip ${active ? "is-active" : ""} ${locked ? "is-locked" : ""} ${disabled ? "is-disabled" : ""}`}
+                        title={locked ? `${d.label} (always included)` : disabled ? `${d.label} unavailable` : `Toggle ${d.label}`}
+                        onClick={() => {
+                          if (locked) return;
+                          if (disabled) {
+                            setBanner({ type: "error", title: "📁 Missing file", sub: `${d.label} not found or unreachable.` });
+                            return;
+                          }
+                          toggleDoc(d.key);
+                        }}
+                        style={{ opacity: disabled ? 0.45 : 1 }}
+                        type="button"
+                        aria-pressed={active}
+                      >
+                        {locked ? `🔒 ${d.label}` : d.label}
+                      </button>
+                    );
+                  })}
+                </div>
+
+                <div className="cc-inputShell">
+                  <button className="cc-iconBtn" type="button" disabled title="Attachments disabled">
+                    <span className="cc-plus">+</span>
+                  </button>
+
+                  <textarea
+                    ref={textareaRef}
+                    className="cc-textarea"
+                    value={input}
+                    placeholder={`Type your question here… (max ${MAX_USER_INPUT_CHARS} chars)`}
+                    onChange={(e) => {
+                      const next = e.target.value || "";
+                      if (next.length <= MAX_USER_INPUT_CHARS) setInput(next);
+                      else setInput(next.slice(0, MAX_USER_INPUT_CHARS));
+                    }}
+                    onKeyDown={onKeyDown}
+                    disabled={isSending}
+                    spellCheck
+                  />
+
+                  <button className="cc-sendBtn" type="button" onClick={clearInput} disabled={isSending || !input.trim()} title="Clear">
+                    ✕
+                  </button>
+                  <button className="cc-sendBtn" type="button" onClick={send} disabled={isSending || !input.trim()} title="Send">
+                    ➤
+                  </button>
+                </div>
+
+                <div className="cc-footer-note">
+                  Powered by {CLOUD_PROVIDER_LABEL} • Matrix always included • <span style={{ fontWeight: 700 }}>{remainingChars}</span> chars left
+                </div>
+              </div>
             </div>
-
-            <div className="cc-inputShell">
-              <button className="cc-iconBtn" type="button" disabled title="Attachments disabled">
-                <span className="cc-plus">+</span>
-              </button>
-
-              <textarea
-                ref={textareaRef}
-                className="cc-textarea"
-                value={input}
-                placeholder={`Type your question here… (max ${MAX_USER_INPUT_CHARS} chars)`}
-                onChange={(e) => {
-                  const next = e.target.value || "";
-                  if (next.length <= MAX_USER_INPUT_CHARS) {
-                    setInput(next);
-                    if (banner?.title === "✂️ Message too long") setBanner(null);
-                  } else {
-                    setInput(next.slice(0, MAX_USER_INPUT_CHARS));
-                    setBanner({
-                      type: "error",
-                      title: "✂️ Message too long",
-                      sub: `Max ${MAX_USER_INPUT_CHARS} characters. Your text was trimmed.`,
-                    });
-                  }
-                }}
-                onKeyDown={onKeyDown}
-                disabled={isSending}
-                spellCheck
-              />
-
-              <button className="cc-sendBtn" type="button" onClick={clearInput} disabled={isSending || !input.trim()} title="Clear">
-                ✕
-              </button>
-              <button className="cc-sendBtn" type="button" onClick={send} disabled={isSending || !input.trim()} title="Send">
-                ➤
-              </button>
-            </div>
-
-            <div className="cc-footer-note">
-              Powered by {CLOUD_PROVIDER_LABEL} • Matrix always included • <span style={{ fontWeight: 700 }}>{remainingChars}</span> chars left
-            </div>
-          </div>
-        </div>
+          </>
+        )}
       </div>
     </ErrorBoundary>
   );

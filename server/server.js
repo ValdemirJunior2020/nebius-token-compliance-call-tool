@@ -5,6 +5,7 @@ import path from "path";
 import { fileURLToPath } from "url";
 import fs from "fs";
 import xlsx from "xlsx";
+import { listReviews, upsertReview } from "./lib/googleSheetsReviews.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -88,6 +89,41 @@ app.use((req, res, next) => {
 
 // -------------------- body parser --------------------
 app.use(express.json({ limit: "2mb" }));
+
+// -------------------- Reviews (Google Sheets) --------------------
+// Sheet: reviews-qa-tool | Tab: reviews
+// Stores: call center, name, email, stars(1-5), comment + timestamps
+app.get("/api/reviews", async (req, res) => {
+  try {
+    const email = String(req.query.email || "").trim();
+    const callCenter = String(req.query.callCenter || "").trim();
+    const out = await listReviews({
+      email: email || undefined,
+      callCenter: callCenter || undefined,
+    });
+    res.json({ ok: true, ...out });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message || "Failed to load reviews" });
+  }
+});
+
+app.post("/api/reviews/upsert", async (req, res) => {
+  try {
+    console.log("[REVIEWS] upsert body:", req.body);
+
+    const { callCenter, name, email, stars, comment } = req.body || {};
+    const out = await upsertReview({ callCenter, name, email, stars, comment });
+
+    console.log("[REVIEWS] upsert result:", out.action, out.review?.reviewId);
+    res.json({ ok: true, ...out });
+  } catch (e) {
+    console.error("[REVIEWS] upsert error:", e);
+    const msg = e.message || "Failed to save review";
+    const status = /missing field|invalid email/i.test(msg) ? 400 : 500;
+    res.status(status).json({ ok: false, error: msg });
+  }
+});
+
 
 // -------------------- health --------------------
 app.get("/health", (req, res) => {

@@ -36,10 +36,10 @@
   /* --- THE NAVY BLUE 3D PIPE --- */
   background: linear-gradient(
     to bottom,
-    #05203d 0%,   /* Dark Navy Shadow */
-    #1d4e80 15%,  /* Lighter Highlight */
-    #0E3966 45%,  /* Main Navy Blue */
-    #05203d 80%,  /* Dark Shadow */
+    #05203d 0%,
+    #1d4e80 15%,
+    #0E3966 45%,
+    #05203d 80%,
     #0E3966 100%
   );
 
@@ -67,24 +67,19 @@
   gap: 10px;
   padding: 0 14px;
 }
+
 /* ====== BIGGER LOGO CSS ====== */
 .cc-navLogo {
-  /* 1. CONTROLS THE SIZE (Increase this number to make it bigger) */
-  height: 52px !important;  
-  
-  /* 2. KEEPS THE SHAPE CORRECT */
+  height: 52px !important;
   width: auto !important;
   object-fit: contain !important;
-  
-  /* 3. ADDS SPACE (So it doesn't overlap the "Call Center" text) */
   margin-right: 20px !important;
-  
-  /* Standard settings to keep it visible */
+
   background: transparent !important;
   border: none !important;
   display: block !important;
   position: relative !important;
-  z-index: 101 !important;
+  z-index: 250 !important; /* kept higher so it stays above title */
 }
 
 /* ====== Nav Item (Light Blue Text) ====== */
@@ -93,7 +88,6 @@
   border: 0;
   background: transparent;
 
-  /* Light Sky Blue Text */
   color: #4CA0FA;
 
   font-size: 18px;
@@ -102,6 +96,9 @@
   cursor: pointer;
   text-decoration: none;
   flex: 0 0 auto;
+
+  position: relative;
+  z-index: 200 !important;
 }
 
 .cc-navItem:hover {
@@ -122,26 +119,39 @@
 .cc-title {
   display: none;
 }
+/* ADD/REPLACE ONLY THIS BLOCK in your App.css (keep everything else the same) */
 
-/* ====== Centered Title (Light Blue) ====== */
-.cc-navTitle {
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  transform: translate(-50%, -50%);
-
-  font-family: 'Montserrat', sans-serif;
-  font-size: 26px;
-  font-weight: 800;
-  letter-spacing: -0.5px;
-  white-space: nowrap;
-  pointer-events: none;
-
-  background: transparent;
-  /* Light Sky Blue Text */
-  color: #4CA0FA !important; 
-  z-index: 90;
+.cc-navTitle{
+  position:absolute;
+  left:50%;
+  top:50%;
+  transform:translate(-50%,-50%);
+  font-family:'Montserrat',sans-serif;
+  text-align:center;
+  pointer-events:none;
+  background:transparent;
+  color:#4CA0FA !important;
+  z-index:90;
+  line-height:1.05;
 }
+
+.cc-navTitleTop{
+  font-size:26px;
+  font-weight:800;
+  letter-spacing:-0.5px;
+  white-space:nowrap;
+}
+
+.cc-navTitleSub{
+  font-size:10px;
+  font-weight:700;
+  letter-spacing:1.2px;
+  opacity:.9;
+  margin-top:2px;
+  white-space:nowrap;
+  text-transform:uppercase;
+}
+
 
 /* ====== Main ====== */
 .cc-main {
@@ -406,6 +416,8 @@
   white-space: pre-wrap;
 }
 
+
+
 .cc-errorVideo {
   width: 520px;
   max-width: 100%;
@@ -549,4 +561,376 @@
 .cc-chip:focus-visible {
   outline: 3px solid rgba(76, 160, 250, 0.55);
   outline-offset: 2px;
+}
+
+/* ===================== Reviews Page ===================== */
+.rv-wrap {
+  width: 100%;
+  max-width: 980px;
+  margin: 0 auto;
+  padding: 10px 6px 30px;
+}
+
+.rv-card {
+  border: 1px solid rgba(17, 24, 39, 0.10);
+  background: rgba(255, 255, 255, 0.92);
+  border-radius: 16px;
+  box-shadow: 0 14px 40px rgba(17, 24, 39, 0.08);
+  padding: 14px;
+}
+
+.rv-head {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.rv-title {
+  font-size: 20px;
+  font-weight: 800;
+  color: rgba(17, 24, 39, 0.90);
+}
+
+.rv-sub {
+  margin-top: 3px;
+  font-size: 12px;
+  color: rgba(17, 24, 39, 0.60);
+  max-width: 620px;
+}
+
+.rv-tabs {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.rv-tab {
+  border: 1px solid rgba(17, 24, 39, 0.12);
+  background: rgba(255, 255, 255, 0.9);
+  color: rgba(17, 24, 39, 0.78);
+  border-radius: 999px;
+  padding: 8px 12px;
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.rv-tab.is-active {
+  border-color: rgba(76, 160, 250, 0.45);
+  box-shadow: 0 10px 24px rgba(76, 160, 250, 0.15);
+}
+
+.rv-alert {
+  border-radius: 12px;
+  padding: 10px 12px;
+  font-size: 13px;
+  margin-bottom: 12px;
+  border: 1px solid rgba(17, 24, 39, 0.10);
+}
+
+.rv-alert.is-err {
+  background: rgba(255, 59, 48, 0.08);
+  color: rgba(17, 24, 39, 0.86);
+}
+
+.rv-alert.is-ok {
+  background: rgba(52, 199, 89, 0.10);
+  color: rgba(17, 24, 39, 0.86);
+}
+
+.rv-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.rv-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.rv-span2 {
+  grid-column: 1 / -1;
+}
+
+.rv-label {
+  font-size: 12px;
+  font-weight: 800;
+  color: rgba(17, 24, 39, 0.75);
+}
+
+.rv-input {
+  border: 1px solid rgba(17, 24, 39, 0.14);
+  background: rgba(255, 255, 255, 0.95);
+  border-radius: 12px;
+  padding: 10px 12px;
+  font-size: 14px;
+  color: rgba(17, 24, 39, 0.90);
+}
+
+.rv-textarea {
+  resize: vertical;
+}
+
+.rv-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 8px;
+}
+
+.rv-hint {
+  font-size: 12px;
+  color: rgba(17, 24, 39, 0.55);
+}
+
+.rv-actions {
+  grid-column: 1 / -1;
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+  margin-top: 2px;
+}
+
+.rv-btn {
+  border: 1px solid rgba(17, 24, 39, 0.14);
+  background: rgba(17, 24, 39, 0.92);
+  color: white;
+  border-radius: 12px;
+  padding: 10px 14px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.rv-btnGhost {
+  background: rgba(255, 255, 255, 0.95);
+  color: rgba(17, 24, 39, 0.88);
+}
+
+.rv-stars {
+  display: inline-flex;
+  gap: 4px;
+}
+
+.rv-star {
+  border: 0;
+  background: transparent;
+  padding: 0;
+  cursor: pointer;
+  line-height: 1;
+  color: rgba(17, 24, 39, 0.22);
+  text-shadow: 0 10px 22px rgba(17, 24, 39, 0.12);
+}
+
+.rv-star.is-on {
+  color: rgba(255, 149, 0, 0.95);
+}
+
+.rv-star.is-ro {
+  cursor: default;
+}
+
+.rv-stats {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.rv-stat {
+  border: 1px solid rgba(17, 24, 39, 0.10);
+  background: rgba(255, 255, 255, 0.70);
+  border-radius: 14px;
+  padding: 12px;
+}
+
+.rv-statWide {
+  grid-column: 1 / -1;
+}
+
+.rv-statLabel {
+  font-size: 12px;
+  font-weight: 800;
+  color: rgba(17, 24, 39, 0.60);
+}
+
+.rv-statVal {
+  margin-top: 4px;
+  font-size: 24px;
+  font-weight: 900;
+  color: rgba(17, 24, 39, 0.92);
+}
+
+.rv-statSmall {
+  font-size: 14px;
+  color: rgba(17, 24, 39, 0.55);
+  margin-left: 2px;
+}
+
+.rv-miniGrid {
+  margin-top: 8px;
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.rv-mini {
+  border: 1px solid rgba(17, 24, 39, 0.10);
+  background: rgba(255, 255, 255, 0.85);
+  border-radius: 12px;
+  padding: 8px 10px;
+}
+
+.rv-miniTop {
+  font-size: 12px;
+  font-weight: 900;
+  color: rgba(17, 24, 39, 0.80);
+}
+
+.rv-miniRow {
+  margin-top: 4px;
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+  color: rgba(17, 24, 39, 0.65);
+  font-weight: 800;
+}
+
+.rv-listHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 10px;
+  margin-bottom: 10px;
+}
+
+.rv-listTitle {
+  font-size: 14px;
+  font-weight: 900;
+  color: rgba(17, 24, 39, 0.88);
+}
+
+.rv-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.rv-item {
+  border: 1px solid rgba(17, 24, 39, 0.10);
+  background: rgba(255, 255, 255, 0.78);
+  border-radius: 14px;
+  padding: 12px;
+}
+
+.rv-itemTop {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.rv-itemName {
+  font-weight: 900;
+  color: rgba(17, 24, 39, 0.90);
+}
+
+.rv-itemMeta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 4px;
+  font-size: 12px;
+  color: rgba(17, 24, 39, 0.58);
+}
+
+.rv-pill {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid rgba(17, 24, 39, 0.10);
+  background: rgba(255, 255, 255, 0.90);
+  border-radius: 999px;
+  padding: 4px 8px;
+  font-weight: 800;
+}
+
+.rv-dot {
+  opacity: 0.7;
+}
+
+.rv-itemComment {
+  margin-top: 10px;
+  font-size: 14px;
+  color: rgba(17, 24, 39, 0.82);
+  line-height: 1.4;
+  white-space: pre-wrap;
+}
+
+.rv-empty {
+  border: 1px dashed rgba(17, 24, 39, 0.18);
+  background: rgba(255, 255, 255, 0.65);
+  border-radius: 14px;
+  padding: 18px;
+  text-align: center;
+  color: rgba(17, 24, 39, 0.65);
+  font-weight: 800;
+}
+
+@media (max-width: 760px) {
+  .rv-grid {
+    grid-template-columns: 1fr;
+  }
+  .rv-miniGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+/* ADD THESE LINES (keep all your existing CSS below/above — just paste these at the end) */
+
+.cc-navTitle {
+  pointer-events: none;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+
+.cc-navTitleMain {
+  font-family: 'Montserrat', sans-serif;
+  font-size: 26px;
+  font-weight: 800;
+  letter-spacing: -0.5px;
+  line-height: 1;
+  color: #4CA0FA !important;
+}
+
+.cc-navTitleSub {
+  font-family: 'Montserrat', sans-serif;
+  font-size: 10px;              /* ✅ very small */
+  font-weight: 800;
+  letter-spacing: 1.8px;        /* ✅ tight “badge” look */
+  margin-top: 2px;
+  line-height: 1;
+  color: rgba(76, 160, 250, 0.85) !important;
+}
+/* ADD THESE LINES AT THE VERY END OF YOUR App.css */
+
+/* ✅ FIX #2: move CCCT block more to the right (without changing HTML) */
+.cc-navTitle {
+  left: 62% !important;  /* was 50% */
+}
+
+/* ✅ FIX #3: make sure NOTHING overlays the footer send button */
+.cc-footer {
+  z-index: 200 !important;
+}
+.cc-footer * {
+  pointer-events: auto !important;
+}
+
+/* (optional safety) if any popover/scrim is still open, it can block clicks */
+.cc-popoverScrim,
+.cc-popover {
+  pointer-events: auto;
 }
