@@ -124,7 +124,6 @@ app.post("/api/reviews/upsert", async (req, res) => {
   }
 });
 
-
 // -------------------- health --------------------
 app.get("/health", (req, res) => {
   res.json({
@@ -142,6 +141,15 @@ app.get("/health", (req, res) => {
 });
 
 // -------------------- docs loading --------------------
+
+// ✅ NEW: prefer local repo assets first (works on Render + local dev)
+// Repo paths:
+// - client/public/Assets/*  (your real source of truth)
+// - server/data/*           (fallback if you keep copies there)
+const LOCAL_ASSETS_DIR = path.join(__dirname, "../client/public/Assets");
+const LOCAL_SERVER_DATA_DIR = path.join(__dirname, "data");
+
+// ✅ Netlify/Frontend base (only used as final fallback)
 function getDocsBase() {
   return (
     process.env.DOCS_BASE_URL ||
@@ -151,52 +159,71 @@ function getDocsBase() {
   );
 }
 
-async function fetchExcelDocument(docName, urlPath) {
-  const docsBase = getDocsBase();
-
+function existsFile(p) {
   try {
-    const netlifyUrl = `${String(docsBase).replace(/\/+$/, "")}/${urlPath}`;
-    log(`Fetching ${docName} from ${netlifyUrl}`);
-
-    const response = await fetch(netlifyUrl, { cache: "no-store" });
-    if (!response.ok) throw new Error(`HTTP ${response.status}`);
-
-    const buffer = Buffer.from(await response.arrayBuffer());
-    const workbook = xlsx.read(buffer, { type: "buffer" });
-    return parseWorkbook(workbook, docName);
-  } catch (netlifyError) {
-    log(`Docs fetch failed, trying local: ${netlifyError.message}`);
-    const localPath = path.join(__dirname, "data", urlPath);
-    if (!fs.existsSync(localPath)) throw new Error(`Document not found: ${localPath}`);
-
-    const workbook = xlsx.readFile(localPath);
-    return parseWorkbook(workbook, docName);
+    return fs.existsSync(p) && fs.statSync(p).isFile();
+  } catch {
+    return false;
   }
 }
 
-async function fetchJsonDocument(docName, urlPath) {
+// ✅ NEW: resolve doc path locally first (Render-friendly)
+function resolveLocalDocPath(fileName) {
+  // 1) your true repo location
+  const p1 = path.join(LOCAL_ASSETS_DIR, fileName);
+  if (existsFile(p1)) return p1;
+
+  // 2) old fallback
+  const p2 = path.join(LOCAL_SERVER_DATA_DIR, fileName);
+  if (existsFile(p2)) return p2;
+
+  return null;
+}
+
+async function fetchExcelDocument(docName, fileName) {
+  // ✅ 1) LOCAL FIRST
+  const localPath = resolveLocalDocPath(fileName);
+  if (localPath) {
+    log(`Loading ${docName} from local: ${localPath}`);
+    const workbook = xlsx.readFile(localPath);
+    return parseWorkbook(workbook, docName);
+  }
+
+  // ✅ 2) REMOTE FALLBACK (Netlify/Frontend)
   const docsBase = getDocsBase();
+  const netlifyUrl = `${String(docsBase).replace(/\/+$/, "")}/Assets/${encodeURIComponent(fileName)}`;
+  log(`Fetching ${docName} from remote: ${netlifyUrl}`);
 
-  try {
-    const netlifyUrl = `${String(docsBase).replace(/\/+$/, "")}/${urlPath}`;
-    log(`Fetching ${docName} from ${netlifyUrl}`);
+  const response = await fetch(netlifyUrl, { cache: "no-store" });
+  if (!response.ok) throw new Error(`HTTP ${response.status} fetching ${netlifyUrl}`);
 
-    const response = await fetch(netlifyUrl, { cache: "no-store" });
-    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+  const buffer = Buffer.from(await response.arrayBuffer());
+  const workbook = xlsx.read(buffer, { type: "buffer" });
+  return parseWorkbook(workbook, docName);
+}
 
-    const json = await response.json();
-    log(`✅ Parsed ${docName}: JSON keys=${Object.keys(json || {}).length}`);
-    return json;
-  } catch (netlifyError) {
-    log(`Docs fetch failed, trying local: ${netlifyError.message}`);
-    const localPath = path.join(__dirname, "data", urlPath);
-    if (!fs.existsSync(localPath)) throw new Error(`Document not found: ${localPath}`);
-
+async function fetchJsonDocument(docName, fileName) {
+  // ✅ 1) LOCAL FIRST
+  const localPath = resolveLocalDocPath(fileName);
+  if (localPath) {
+    log(`Loading ${docName} from local: ${localPath}`);
     const raw = fs.readFileSync(localPath, "utf-8");
     const json = JSON.parse(raw);
     log(`✅ Parsed ${docName}: JSON keys=${Object.keys(json || {}).length}`);
     return json;
   }
+
+  // ✅ 2) REMOTE FALLBACK (Netlify/Frontend)
+  const docsBase = getDocsBase();
+  const netlifyUrl = `${String(docsBase).replace(/\/+$/, "")}/Assets/${encodeURIComponent(fileName)}`;
+  log(`Fetching ${docName} from remote: ${netlifyUrl}`);
+
+  const response = await fetch(netlifyUrl, { cache: "no-store" });
+  if (!response.ok) throw new Error(`HTTP ${response.status} fetching ${netlifyUrl}`);
+
+  const json = await response.json();
+  log(`✅ Parsed ${docName}: JSON keys=${Object.keys(json || {}).length}`);
+  return json;
 }
 
 function parseWorkbook(workbook, docName) {
@@ -217,6 +244,7 @@ async function loadDocuments(force = false) {
     { key: "qaGroup", file: "qa-group.xlsx", name: "QA Groups", kind: "excel" },
     { key: "matrix", file: "Service Matrix's 2026.xlsx", name: "Service Matrix", kind: "excel" },
     { key: "trainingGuide", file: "hotelplanner_training_guide.json", name: "Training Guide", kind: "json" },
+    { key: "rppGuide", file: "rpp_protection_guide.json", name: "RPP Protection Guide", kind: "json" },
   ];
 
   for (const doc of docs) {
@@ -238,7 +266,7 @@ function buildContext(docsSelection) {
   const parts = [];
   const MAX_CHARS = 6000;
 
-  // ✅ Matrix is ALWAYS included (locked on in the client, but enforced here too)
+  // ✅ Matrix ALWAYS included
   const wantMatrix = true;
 
   if (docsSelection.qaVoice && DOCUMENT_CACHE.qaVoice) {
@@ -252,6 +280,9 @@ function buildContext(docsSelection) {
   }
   if (docsSelection.trainingGuide && DOCUMENT_CACHE.trainingGuide) {
     parts.push(`TRAINING GUIDE (JSON):\n${JSON.stringify(DOCUMENT_CACHE.trainingGuide).slice(0, MAX_CHARS)}`);
+  }
+  if (docsSelection.rppGuide && DOCUMENT_CACHE.rppGuide) {
+    parts.push(`RPP PROTECTION GUIDE (JSON):\n${JSON.stringify(DOCUMENT_CACHE.rppGuide).slice(0, MAX_CHARS)}`);
   }
 
   return parts.join("\n\n---\n\n") || "NOT FOUND IN DOCS";
