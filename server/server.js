@@ -1,4 +1,4 @@
-// server/server.js - Anthropic (Claude) + Excel + JSON docs + FIXED CORS + timeoutPromise
+// server/server.js - Anthropic (Claude) + Excel + JSON docs + FIXED CORS + timeoutPromise + Google Sheets Reviews (Render-safe)
 import express from "express";
 import dotenv from "dotenv";
 import path from "path";
@@ -34,7 +34,9 @@ let LAST_LOAD = 0;
 
 // -------------------- CORS (FIXED) --------------------
 const FRONTEND_URLS = String(
-  process.env.FRONTEND_URLS || process.env.FRONTEND_URL || "https://nebius-api-call-compliance-tool.netlify.app"
+  process.env.FRONTEND_URLS ||
+    process.env.FRONTEND_URL ||
+    "https://nebius-api-call-compliance-tool.netlify.app"
 )
   .split(",")
   .map((s) => s.trim().replace(/\/+$/, ""))
@@ -90,11 +92,54 @@ app.use((req, res, next) => {
 // -------------------- body parser --------------------
 app.use(express.json({ limit: "2mb" }));
 
+// -------------------- Google Sheets env helpers --------------------
+function cleanPrivateKey(raw) {
+  const s = String(raw || "").trim();
+  if (!s) return "";
+  // Render env may store literal "\n" sequences or real newlines. Support both.
+  const withNewlines = s.includes("\\n") ? s.replace(/\\n/g, "\n") : s;
+  // Some people paste with surrounding quotes; strip one layer safely.
+  return withNewlines.replace(/^"(.*)"$/s, "$1").replace(/^'(.*)'$/s, "$1").trim();
+}
+
+function sheetsEnvStatus() {
+  const email = String(process.env.GOOGLE_SHEETS_CLIENT_EMAIL || "").trim();
+  const key = cleanPrivateKey(process.env.GOOGLE_SHEETS_PRIVATE_KEY || "");
+  const sheetId = String(process.env.GOOGLE_SHEETS_SPREADSHEET_ID || "").trim();
+  const tab = String(process.env.GOOGLE_SHEETS_TAB_NAME || "").trim();
+
+  const hasBegin = key.includes("BEGIN PRIVATE KEY");
+  const hasEnd = key.includes("END PRIVATE KEY");
+
+  return {
+    emailSet: !!email,
+    keyLen: key.length,
+    keyLooksValid: hasBegin && hasEnd && key.length > 100,
+    sheetIdSet: !!sheetId,
+    tabSet: !!tab,
+  };
+}
+
+function ensureSheetsConfigured() {
+  const st = sheetsEnvStatus();
+  if (!st.emailSet || !st.keyLooksValid || !st.sheetIdSet || !st.tabSet) {
+    const missing = [];
+    if (!st.emailSet) missing.push("GOOGLE_SHEETS_CLIENT_EMAIL");
+    if (!st.keyLooksValid) missing.push("GOOGLE_SHEETS_PRIVATE_KEY");
+    if (!st.sheetIdSet) missing.push("GOOGLE_SHEETS_SPREADSHEET_ID");
+    if (!st.tabSet) missing.push("GOOGLE_SHEETS_TAB_NAME");
+    const e = new Error(`Google Sheets not configured: missing/invalid ${missing.join(", ")}`);
+    e.status = 500;
+    throw e;
+  }
+}
+
 // -------------------- Reviews (Google Sheets) --------------------
-// Sheet: reviews-qa-tool | Tab: reviews
-// Stores: call center, name, email, stars(1-5), comment + timestamps
+// Stores: callCenter, name, email, stars(1-5), comment + timestamps
 app.get("/api/reviews", async (req, res) => {
   try {
+    ensureSheetsConfigured();
+
     const email = String(req.query.email || "").trim();
     const callCenter = String(req.query.callCenter || "").trim();
     const out = await listReviews({
@@ -103,29 +148,28 @@ app.get("/api/reviews", async (req, res) => {
     });
     res.json({ ok: true, ...out });
   } catch (e) {
-    res.status(500).json({ ok: false, error: e.message || "Failed to load reviews" });
+    const status = e.status || 500;
+    res.status(status).json({ ok: false, error: e.message || "Failed to load reviews" });
   }
 });
 
 app.post("/api/reviews/upsert", async (req, res) => {
   try {
-    console.log("[REVIEWS] upsert body:", req.body);
+    ensureSheetsConfigured();
 
     const { callCenter, name, email, stars, comment } = req.body || {};
     const out = await upsertReview({ callCenter, name, email, stars, comment });
-
-    console.log("[REVIEWS] upsert result:", out.action, out.review?.reviewId);
     res.json({ ok: true, ...out });
   } catch (e) {
-    console.error("[REVIEWS] upsert error:", e);
     const msg = e.message || "Failed to save review";
-    const status = /missing field|invalid email/i.test(msg) ? 400 : 500;
+    const status = e.status || (/missing field|invalid email|invalid/i.test(msg) ? 400 : 500);
     res.status(status).json({ ok: false, error: msg });
   }
 });
 
 // -------------------- health --------------------
 app.get("/health", (req, res) => {
+  const st = sheetsEnvStatus();
   res.json({
     ok: true,
     port: PORT,
@@ -133,8 +177,20 @@ app.get("/health", (req, res) => {
     nebiusConfigured: !!NEBIUS_API_KEY,
     kimiConfigured: !!KIMI_API_KEY,
     anthropicConfigured: !!ANTHROPIC_API_KEY,
+
+    // docs
     documentsCached: Object.keys(DOCUMENT_CACHE),
     lastLoad: LAST_LOAD ? new Date(LAST_LOAD).toISOString() : null,
+
+    // sheets (no secrets)
+    sheets: {
+      emailSet: st.emailSet,
+      keyLen: st.keyLen,
+      keyLooksValid: st.keyLooksValid,
+      sheetIdSet: st.sheetIdSet,
+      tabSet: st.tabSet,
+    },
+
     frontendAllowed: Array.from(ALLOWED_ORIGINS),
     ts: new Date().toISOString(),
   });
@@ -142,21 +198,16 @@ app.get("/health", (req, res) => {
 
 // -------------------- docs loading --------------------
 
-// ✅ NEW: prefer local repo assets first (works on Render + local dev)
+// ✅ prefer local repo assets first (works on Render + local dev)
 // Repo paths:
-// - client/public/Assets/*  (your real source of truth)
-// - server/data/*           (fallback if you keep copies there)
+// - client/public/Assets/*  (source of truth)
+// - server/data/*           (optional fallback)
 const LOCAL_ASSETS_DIR = path.join(__dirname, "../client/public/Assets");
 const LOCAL_SERVER_DATA_DIR = path.join(__dirname, "data");
 
 // ✅ Netlify/Frontend base (only used as final fallback)
 function getDocsBase() {
-  return (
-    process.env.DOCS_BASE_URL ||
-    FRONTEND_URLS[0] ||
-    FRONTEND_URL_DEV ||
-    "http://localhost:5173"
-  );
+  return process.env.DOCS_BASE_URL || FRONTEND_URLS[0] || FRONTEND_URL_DEV || "http://localhost:5173";
 }
 
 function existsFile(p) {
@@ -167,21 +218,25 @@ function existsFile(p) {
   }
 }
 
-// ✅ NEW: resolve doc path locally first (Render-friendly)
 function resolveLocalDocPath(fileName) {
-  // 1) your true repo location
   const p1 = path.join(LOCAL_ASSETS_DIR, fileName);
   if (existsFile(p1)) return p1;
 
-  // 2) old fallback
   const p2 = path.join(LOCAL_SERVER_DATA_DIR, fileName);
   if (existsFile(p2)) return p2;
 
   return null;
 }
 
+function remoteAssetUrl(fileName) {
+  // IMPORTANT: encode each path segment but keep /Assets/ readable
+  const base = String(getDocsBase()).replace(/\/+$/, "");
+  const encoded = encodeURIComponent(fileName).replace(/%2F/g, "/");
+  return `${base}/Assets/${encoded}`;
+}
+
 async function fetchExcelDocument(docName, fileName) {
-  // ✅ 1) LOCAL FIRST
+  // 1) LOCAL FIRST
   const localPath = resolveLocalDocPath(fileName);
   if (localPath) {
     log(`Loading ${docName} from local: ${localPath}`);
@@ -189,13 +244,12 @@ async function fetchExcelDocument(docName, fileName) {
     return parseWorkbook(workbook, docName);
   }
 
-  // ✅ 2) REMOTE FALLBACK (Netlify/Frontend)
-  const docsBase = getDocsBase();
-  const netlifyUrl = `${String(docsBase).replace(/\/+$/, "")}/Assets/${encodeURIComponent(fileName)}`;
-  log(`Fetching ${docName} from remote: ${netlifyUrl}`);
+  // 2) REMOTE FALLBACK
+  const url = remoteAssetUrl(fileName);
+  log(`Fetching ${docName} from remote: ${url}`);
 
-  const response = await fetch(netlifyUrl, { cache: "no-store" });
-  if (!response.ok) throw new Error(`HTTP ${response.status} fetching ${netlifyUrl}`);
+  const response = await fetch(url, { cache: "no-store" });
+  if (!response.ok) throw new Error(`HTTP ${response.status} fetching ${url}`);
 
   const buffer = Buffer.from(await response.arrayBuffer());
   const workbook = xlsx.read(buffer, { type: "buffer" });
@@ -203,7 +257,7 @@ async function fetchExcelDocument(docName, fileName) {
 }
 
 async function fetchJsonDocument(docName, fileName) {
-  // ✅ 1) LOCAL FIRST
+  // 1) LOCAL FIRST
   const localPath = resolveLocalDocPath(fileName);
   if (localPath) {
     log(`Loading ${docName} from local: ${localPath}`);
@@ -213,13 +267,12 @@ async function fetchJsonDocument(docName, fileName) {
     return json;
   }
 
-  // ✅ 2) REMOTE FALLBACK (Netlify/Frontend)
-  const docsBase = getDocsBase();
-  const netlifyUrl = `${String(docsBase).replace(/\/+$/, "")}/Assets/${encodeURIComponent(fileName)}`;
-  log(`Fetching ${docName} from remote: ${netlifyUrl}`);
+  // 2) REMOTE FALLBACK
+  const url = remoteAssetUrl(fileName);
+  log(`Fetching ${docName} from remote: ${url}`);
 
-  const response = await fetch(netlifyUrl, { cache: "no-store" });
-  if (!response.ok) throw new Error(`HTTP ${response.status} fetching ${netlifyUrl}`);
+  const response = await fetch(url, { cache: "no-store" });
+  if (!response.ok) throw new Error(`HTTP ${response.status} fetching ${url}`);
 
   const json = await response.json();
   log(`✅ Parsed ${docName}: JSON keys=${Object.keys(json || {}).length}`);
@@ -279,10 +332,14 @@ function buildContext(docsSelection) {
     parts.push(`SERVICE MATRIX 2026:\n${JSON.stringify(DOCUMENT_CACHE.matrix).slice(0, MAX_CHARS)}`);
   }
   if (docsSelection.trainingGuide && DOCUMENT_CACHE.trainingGuide) {
-    parts.push(`TRAINING GUIDE (JSON):\n${JSON.stringify(DOCUMENT_CACHE.trainingGuide).slice(0, MAX_CHARS)}`);
+    parts.push(
+      `TRAINING GUIDE (JSON):\n${JSON.stringify(DOCUMENT_CACHE.trainingGuide).slice(0, MAX_CHARS)}`
+    );
   }
   if (docsSelection.rppGuide && DOCUMENT_CACHE.rppGuide) {
-    parts.push(`RPP PROTECTION GUIDE (JSON):\n${JSON.stringify(DOCUMENT_CACHE.rppGuide).slice(0, MAX_CHARS)}`);
+    parts.push(
+      `RPP PROTECTION GUIDE (JSON):\n${JSON.stringify(DOCUMENT_CACHE.rppGuide).slice(0, MAX_CHARS)}`
+    );
   }
 
   return parts.join("\n\n---\n\n") || "NOT FOUND IN DOCS";
@@ -382,17 +439,9 @@ async function handleAsk(req, res) {
     });
   }
 
-  const keyCheck = {
-    nebius: NEBIUS_API_KEY,
-    kimi: KIMI_API_KEY,
-    anthropic: ANTHROPIC_API_KEY,
-  };
-
+  const keyCheck = { nebius: NEBIUS_API_KEY, kimi: KIMI_API_KEY, anthropic: ANTHROPIC_API_KEY };
   if (!keyCheck[AI_PROVIDER]) {
-    return res.status(500).json({
-      ok: false,
-      error: `Server missing ${AI_PROVIDER.toUpperCase()}_API_KEY`,
-    });
+    return res.status(500).json({ ok: false, error: `Server missing ${AI_PROVIDER.toUpperCase()}_API_KEY` });
   }
 
   try {
@@ -411,7 +460,7 @@ NON-NEGOTIABLE RULES (HARD FAIL IF BROKEN)
 2) Do NOT invent policies, time limits, fees, refund eligibility, or steps.
 3) ALWAYS prefer the most restrictive/compliance-safe option when multiple options exist, and explain why using citations.
 4) If there is a conflict between docs, resolve by priority:
-   Service Matrix 2026 > QA Voice > QA Groups > Training Guide
+   Service Matrix 2026 > QA Voice > QA Groups > Training Guide > RPP Protection Guide
    If still unclear, output: "CONFLICT IN DOCS" + quote the conflicting sections and ask what to follow.
 5) Never promise outcomes (refund approved / cancellation confirmed) unless docs explicitly say it can be confirmed.
 6) For any booking-related issue, require verification fields when applicable:
@@ -478,7 +527,6 @@ Now answer the user question using the rules above.
   } catch (error) {
     errlog(`[${reqId}] Error:`, error?.message || error);
     const status = error.status || 500;
-
     return res.status(status).json({
       ok: false,
       error: error.message || "Unknown server error",
@@ -504,7 +552,7 @@ app.use((req, res) => {
   res.status(404).json({
     ok: false,
     error: "Not found",
-    endpoints: ["/health", "/api/claude"],
+    endpoints: ["/health", "/api/claude", "/api/reviews", "/api/reviews/upsert"],
     provider: AI_PROVIDER,
   });
 });
@@ -516,6 +564,13 @@ app.listen(PORT, async () => {
   console.log(`🔑 Nebius: ${NEBIUS_API_KEY ? "✅" : "❌"}`);
   console.log(`🔑 Kimi: ${KIMI_API_KEY ? "✅" : "❌"}`);
   console.log(`🔑 Anthropic: ${ANTHROPIC_API_KEY ? "✅" : "❌"}`);
+
+  const sheets = sheetsEnvStatus();
+  console.log(
+    `🧾 Sheets: email=${sheets.emailSet ? "✅" : "❌"} key=${sheets.keyLooksValid ? "✅" : "❌"} sheetId=${
+      sheets.sheetIdSet ? "✅" : "❌"
+    } tab=${sheets.tabSet ? "✅" : "❌"}`
+  );
 
   const currentKey = { nebius: NEBIUS_API_KEY, kimi: KIMI_API_KEY, anthropic: ANTHROPIC_API_KEY }[AI_PROVIDER];
 
