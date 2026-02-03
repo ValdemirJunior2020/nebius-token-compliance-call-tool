@@ -30,7 +30,6 @@ const KIMI_MODEL = process.env.KIMI_MODEL || "moonshot-v1-8k";
 const ANTHROPIC_MODEL = process.env.ANTHROPIC_MODEL || "claude-3-5-sonnet-20240620";
 
 const log = (...a) => DEBUG && console.log("[server]", ...a);
-const warn = (...a) => DEBUG && console.warn("[server]", ...a);
 const errlog = (...a) => console.error("[server]", ...a);
 
 let DOCUMENT_CACHE = {};
@@ -97,21 +96,18 @@ app.use(express.json({ limit: "2mb" }));
 
 // -------------------- Google Sheets env helpers --------------------
 function normalizePrivateKey(raw) {
-  // Render often stores multiline secrets literally; we accept both forms:
-  // - with real newlines
-  // - with \n sequences
   if (!raw) return "";
   const s = String(raw).trim();
 
-  // If it already contains real newlines and BEGIN/END, keep it
+  // already multiline
   if (s.includes("-----BEGIN PRIVATE KEY-----") && s.includes("\n") && s.includes("-----END PRIVATE KEY-----")) {
     return s;
   }
 
-  // If it contains escaped \n sequences, convert them to real newlines
+  // convert \n to real newlines
   const unescaped = s.replace(/\\n/g, "\n");
 
-  // Some people accidentally include surrounding quotes; strip them safely
+  // strip accidental wrapping quotes
   const dequoted = unescaped.replace(/^"+|"+$/g, "").replace(/^'+|'+$/g, "");
 
   return dequoted.trim();
@@ -138,7 +134,6 @@ function sheetsEnvStatus() {
 }
 
 // -------------------- Reviews (Google Sheets) --------------------
-// Stores: callCenter, name, email, stars(1-5), comment + timestamps
 app.get("/api/reviews", async (req, res) => {
   try {
     const email = String(req.query.email || "").trim();
@@ -196,14 +191,9 @@ app.get("/health", (req, res) => {
 });
 
 // -------------------- docs loading --------------------
-// Prefer local repo assets first (works on Render + local dev)
-// Repo paths:
-// - client/public/Assets/*  (your real source of truth)
-// - server/data/*           (fallback if you keep copies there)
 const LOCAL_ASSETS_DIR = path.join(__dirname, "../client/public/Assets");
 const LOCAL_SERVER_DATA_DIR = path.join(__dirname, "data");
 
-// Netlify/Frontend base (only used as final fallback)
 function getDocsBase() {
   return process.env.DOCS_BASE_URL || FRONTEND_URLS[0] || FRONTEND_URL_DEV || "http://localhost:5173";
 }
@@ -216,7 +206,6 @@ function existsFile(p) {
   }
 }
 
-// Resolve doc path locally first (Render-friendly)
 function resolveLocalDocPath(fileName) {
   const p1 = path.join(LOCAL_ASSETS_DIR, fileName);
   if (existsFile(p1)) return p1;
@@ -228,7 +217,6 @@ function resolveLocalDocPath(fileName) {
 }
 
 async function fetchExcelDocument(docName, fileName) {
-  // 1) LOCAL FIRST
   const localPath = resolveLocalDocPath(fileName);
   if (localPath) {
     log(`Loading ${docName} from local: ${localPath}`);
@@ -236,7 +224,6 @@ async function fetchExcelDocument(docName, fileName) {
     return parseWorkbook(workbook, docName);
   }
 
-  // 2) REMOTE FALLBACK (Netlify/Frontend)
   const docsBase = getDocsBase();
   const netlifyUrl = `${String(docsBase).replace(/\/+$/, "")}/Assets/${encodeURIComponent(fileName)}`;
   log(`Fetching ${docName} from remote: ${netlifyUrl}`);
@@ -250,7 +237,6 @@ async function fetchExcelDocument(docName, fileName) {
 }
 
 async function fetchJsonDocument(docName, fileName) {
-  // 1) LOCAL FIRST
   const localPath = resolveLocalDocPath(fileName);
   if (localPath) {
     log(`Loading ${docName} from local: ${localPath}`);
@@ -260,7 +246,6 @@ async function fetchJsonDocument(docName, fileName) {
     return json;
   }
 
-  // 2) REMOTE FALLBACK (Netlify/Frontend)
   const docsBase = getDocsBase();
   const netlifyUrl = `${String(docsBase).replace(/\/+$/, "")}/Assets/${encodeURIComponent(fileName)}`;
   log(`Fetching ${docName} from remote: ${netlifyUrl}`);
@@ -283,7 +268,6 @@ function parseWorkbook(workbook, docName) {
   return result;
 }
 
-// ✅ Always prints a summary (even if DEBUG=false), and never “hangs forever”
 async function loadDocuments(force = false) {
   if (Object.keys(DOCUMENT_CACHE).length > 0 && !force) return;
 
@@ -307,12 +291,7 @@ async function loadDocuments(force = false) {
 
       DOCUMENT_CACHE[doc.key] = data;
 
-      results.push({
-        name: doc.name,
-        file: doc.file,
-        ok: true,
-        ms: Date.now() - t0,
-      });
+      results.push({ name: doc.name, file: doc.file, ok: true, ms: Date.now() - t0 });
     } catch (e) {
       results.push({
         name: doc.name,
@@ -341,7 +320,6 @@ function buildContext(docsSelection) {
   const parts = [];
   const MAX_CHARS = 6000;
 
-  // Matrix ALWAYS included
   const wantMatrix = true;
 
   if (docsSelection.qaVoice && DOCUMENT_CACHE.qaVoice) {
