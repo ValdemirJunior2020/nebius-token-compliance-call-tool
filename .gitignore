@@ -61,3 +61,14 @@ gatsby-cache/
 
 # Optional: local npm pack output
 *.tgz
+# secrets
+.env
+.env.*
+*.key
+*.pem
+*.p12
+*.pfx
+*.jks
+*service-account*.json
+server/*.json
+server/**/psych-support-app-*.json
