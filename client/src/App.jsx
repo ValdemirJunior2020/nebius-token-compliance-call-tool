@@ -542,7 +542,7 @@ export default function App() {
     setBanner(null);
   }, []);
 
-  // ✅ FIX #1: SEND FUNCTION RESTORED (your earlier version got replaced by an empty send)
+  // ✅ SEND
   const send = useCallback(async () => {
     const question = normalizeWs(input);
     if (!question || isSending) return;
@@ -611,6 +611,7 @@ export default function App() {
       },
     });
 
+    // ✅ IMPORTANT: keep only the route your server actually supports
     const endpoints = ["/api/claude"];
 
     try {
@@ -755,8 +756,7 @@ export default function App() {
                       Mode: <b>{mode === "cloud" ? CLOUD_PROVIDER_LABEL : "Local"}</b> • Docs: <b>{activeDocsLabel}</b>
                     </div>
                     <div className="cc-heroSub">
-                      Server:{" "}
-                      <span style={{ fontWeight: 700 }}>{health.ok == null ? "checking…" : health.ok ? "online" : "offline"}</span>
+                      Server: <span style={{ fontWeight: 700 }}>{health.ok == null ? "checking…" : health.ok ? "online" : "offline"}</span>
                       {health.last ? (
                         <span style={{ marginLeft: 8, color: "rgba(17,24,39,0.45)", fontSize: 12 }}>
                           ({new Date(health.last).toLocaleTimeString()})
