@@ -1,11 +1,10 @@
-// client/src/components/Reviews/ReviewsPage.jsx
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import StarRating from "./StarRating.jsx";
 
 const CALL_CENTERS = ["Buwelo", "Concentrix", "WNS", "Ideal", "TEP"];
 
 function norm(s) {
-  return String(s || "").trim();
+  return String(s ?? "").trim();
 }
 function normKey(s) {
   return norm(s).toLowerCase();
@@ -15,12 +14,32 @@ function isEmail(s) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e);
 }
 function averageStars(rows) {
-  if (!rows.length) return 0;
-  const sum = rows.reduce((a, r) => a + (Number(r.stars) || 0), 0);
-  return Math.round((sum / rows.length) * 10) / 10;
+  const list = Array.isArray(rows) ? rows : [];
+  if (!list.length) return 0;
+  const sum = list.reduce((a, r) => a + (Number(r?.stars) || 0), 0);
+  return Math.round((sum / list.length) * 10) / 10;
+}
+
+// ✅ safe base even if prop missing
+function cleanBase(apiBase) {
+  const base = norm(apiBase);
+  return (base || window.location.origin).replace(/\/+$/, "");
+}
+
+// ✅ safe string formatting to avoid ".replace of undefined" anywhere
+function safeStr(v) {
+  if (v == null) return "";
+  if (typeof v === "string") return v;
+  try {
+    return String(v);
+  } catch {
+    return "";
+  }
 }
 
 export default function ReviewsPage({ apiBase }) {
+  const base = useMemo(() => cleanBase(apiBase), [apiBase]);
+
   const [tab, setTab] = useState("write"); // write | view
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -44,8 +63,8 @@ export default function ReviewsPage({ apiBase }) {
       ...options,
       signal: ctrl.signal,
       headers: {
-        "Content-Type": "application/json",
         ...(options.headers || {}),
+        "Content-Type": "application/json",
       },
       cache: "no-store",
     });
@@ -55,12 +74,31 @@ export default function ReviewsPage({ apiBase }) {
     const body = isJsonRes ? await res.json().catch(() => null) : await res.text().catch(() => "");
 
     if (!res.ok) {
-      const msg = (body && body.error) || (typeof body === "string" ? body : "Request failed");
+      const msg =
+        (body && typeof body === "object" && body.error) ||
+        (typeof body === "string" && body) ||
+        res.statusText ||
+        "Request failed";
       const e = new Error(String(msg));
       e.status = res.status;
+      e.body = body;
       throw e;
     }
     return body;
+  }
+
+  async function ping() {
+    setError("");
+    setOkMsg("");
+    setLoading(true);
+    try {
+      const data = await fetchJson(`${base}/api/reviews/ping`);
+      setOkMsg(data?.ok ? "Reviews API online ✅" : "Ping OK ✅");
+    } catch (e) {
+      setError(e?.message || "Ping failed");
+    } finally {
+      setLoading(false);
+    }
   }
 
   async function loadAll() {
@@ -68,11 +106,11 @@ export default function ReviewsPage({ apiBase }) {
     setOkMsg("");
     setLoading(true);
     try {
-      const url = `${apiBase.replace(/\/+$/, "")}/api/reviews`;
-      const data = await fetchJson(url);
-      setReviews(Array.isArray(data.reviews) ? data.reviews : []);
+      const data = await fetchJson(`${base}/api/reviews`);
+      setReviews(Array.isArray(data?.reviews) ? data.reviews : []);
     } catch (e) {
-      setError(e.message || "Failed to load reviews");
+      setError(e?.message || "Failed to load reviews");
+      setReviews([]);
     } finally {
       setLoading(false);
     }
@@ -89,19 +127,20 @@ export default function ReviewsPage({ apiBase }) {
     setLoading(true);
     try {
       const qs = new URLSearchParams({ email: em, callCenter: norm(callCenter) });
-      const url = `${apiBase.replace(/\/+$/, "")}/api/reviews?${qs.toString()}`;
-      const data = await fetchJson(url);
-      const mine = Array.isArray(data.reviews) ? data.reviews[0] : null;
+      const data = await fetchJson(`${base}/api/reviews?${qs.toString()}`);
+      const mine = Array.isArray(data?.reviews) ? data.reviews[0] : null;
+
       if (!mine) {
         setOkMsg("No existing review found. You can submit a new one.");
         return;
       }
-      setName(mine.name || "");
-      setStars(Number(mine.stars) || 5);
-      setComment(mine.comment || "");
+
+      setName(safeStr(mine?.name));
+      setStars(Number(mine?.stars) || 5);
+      setComment(safeStr(mine?.comment));
       setOkMsg("Loaded your existing review. Edit and click Save.");
     } catch (e) {
-      setError(e.message || "Failed to find your review");
+      setError(e?.message || "Failed to find your review");
     } finally {
       setLoading(false);
     }
@@ -124,16 +163,15 @@ export default function ReviewsPage({ apiBase }) {
 
     setLoading(true);
     try {
-      const url = `${apiBase.replace(/\/+$/, "")}/api/reviews/upsert`;
-      const data = await fetchJson(url, {
+      const data = await fetchJson(`${base}/api/reviews/upsert`, {
         method: "POST",
         body: JSON.stringify({ callCenter: cc, name: nm, email: em, stars: st, comment: cm }),
       });
 
-      setOkMsg(data.action === "updated" ? "Review updated ✅" : "Review saved ✅");
+      setOkMsg(data?.action === "updated" ? "Review updated ✅" : "Review saved ✅");
       await loadAll();
     } catch (e) {
-      setError(e.message || "Failed to save review");
+      setError(e?.message || "Failed to save review");
     } finally {
       setLoading(false);
     }
@@ -149,7 +187,7 @@ export default function ReviewsPage({ apiBase }) {
     const rows = Array.isArray(reviews) ? reviews : [];
     const avg = averageStars(rows);
     const counts = CALL_CENTERS.map((cc) => {
-      const list = rows.filter((r) => normKey(r.callCenter) === normKey(cc));
+      const list = rows.filter((r) => normKey(r?.callCenter) === normKey(cc));
       return { callCenter: cc, count: list.length, avg: averageStars(list) };
     });
     return { total: rows.length, avg, counts };
@@ -164,7 +202,11 @@ export default function ReviewsPage({ apiBase }) {
             <div className="rv-sub">
               Rate the tool and your experience (1–5 stars). You can edit anytime using the same Call Center + Email.
             </div>
+            <div className="rv-sub" style={{ opacity: 0.75, marginTop: 6 }}>
+              API Base: <span style={{ fontWeight: 700 }}>{base}</span>
+            </div>
           </div>
+
           <div className="rv-tabs">
             <button className={`rv-tab ${tab === "write" ? "is-active" : ""}`} type="button" onClick={() => setTab("write")}>
               Write / Edit
@@ -177,6 +219,15 @@ export default function ReviewsPage({ apiBase }) {
 
         {error ? <div className="rv-alert is-err">{error}</div> : null}
         {okMsg ? <div className="rv-alert is-ok">{okMsg}</div> : null}
+
+        <div className="rv-row" style={{ gap: 10, marginBottom: 14 }}>
+          <button className="rv-btn rv-btnGhost" type="button" onClick={ping} disabled={loading}>
+            {loading ? "Pinging…" : "Ping"}
+          </button>
+          <button className="rv-btn rv-btnGhost" type="button" onClick={loadAll} disabled={loading}>
+            {loading ? "Refreshing…" : "Refresh"}
+          </button>
+        </div>
 
         {tab === "write" ? (
           <div className="rv-grid">
@@ -198,7 +249,13 @@ export default function ReviewsPage({ apiBase }) {
 
             <div className="rv-field">
               <label className="rv-label">Email</label>
-              <input className="rv-input" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="name@company.com" disabled={loading} />
+              <input
+                className="rv-input"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="name@company.com"
+                disabled={loading}
+              />
               <div className="rv-row">
                 <button className="rv-btn rv-btnGhost" type="button" onClick={findMine} disabled={loading || !email.trim()}>
                   Find My Review
@@ -284,23 +341,27 @@ export default function ReviewsPage({ apiBase }) {
             </div>
 
             <div className="rv-list">
-              {reviews.length ? (
-                reviews.map((r) => (
-                  <div key={r.reviewId || `${r.email}-${r.callCenter}-${r.updatedAt}`} className="rv-item">
-                    <div className="rv-itemTop">
-                      <div className="rv-itemLeft">
-                        <div className="rv-itemName">{r.name || "(no name)"}</div>
-                        <div className="rv-itemMeta">
-                          <span className="rv-pill">{r.callCenter || "Unknown"}</span>
-                          <span className="rv-dot">•</span>
-                          <span className="rv-date">{r.updatedAt ? new Date(r.updatedAt).toLocaleString() : ""}</span>
+              {Array.isArray(reviews) && reviews.length ? (
+                reviews.map((r) => {
+                  const key = r?.reviewId || `${safeStr(r?.email)}-${safeStr(r?.callCenter)}-${safeStr(r?.updatedAt)}`;
+                  const updatedAt = r?.updatedAt ? new Date(r.updatedAt).toLocaleString() : "";
+                  return (
+                    <div key={key} className="rv-item">
+                      <div className="rv-itemTop">
+                        <div className="rv-itemLeft">
+                          <div className="rv-itemName">{safeStr(r?.name) || "(no name)"}</div>
+                          <div className="rv-itemMeta">
+                            <span className="rv-pill">{safeStr(r?.callCenter) || "Unknown"}</span>
+                            <span className="rv-dot">•</span>
+                            <span className="rv-date">{updatedAt}</span>
+                          </div>
                         </div>
+                        <StarRating value={Number(r?.stars) || 0} readOnly />
                       </div>
-                      <StarRating value={Number(r.stars) || 0} readOnly />
+                      {r?.comment ? <div className="rv-itemComment">{safeStr(r.comment)}</div> : null}
                     </div>
-                    {r.comment ? <div className="rv-itemComment">{r.comment}</div> : null}
-                  </div>
-                ))
+                  );
+                })
               ) : (
                 <div className="rv-empty">No reviews yet.</div>
               )}

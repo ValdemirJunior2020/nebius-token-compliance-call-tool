@@ -266,7 +266,7 @@ function buildPayload({ question, mode, docs }) {
 }
 
 function build404Message({ apiBase, attemptedPath }) {
-  const base = (apiBase || "").replace(/\/+$/, "");
+  const base = String(apiBase || "").replace(/\/+$/, "");
   return normalizeWs(`
 🔎 Server cannot find the requested resource (HTTP 404).
 
@@ -438,9 +438,7 @@ export default function App() {
   const [health, setHealth] = useState({ ok: null, last: null });
   const [resourcesOpen, setResourcesOpen] = useState(false);
 
-  const [messages, setMessages] = useState(() => [
-    { id: genId(), role: "assistant", text: QA_MASTER_INTRO, ts: Date.now() },
-  ]);
+  const [messages, setMessages] = useState(() => [{ id: genId(), role: "assistant", text: QA_MASTER_INTRO, ts: Date.now() }]);
 
   useAutoResizeTextarea(textareaRef, input);
 
@@ -472,9 +470,8 @@ export default function App() {
     for (const d of DOC_META) {
       try {
         const head = await fetchWithTimeout(d.path, { method: "HEAD" }, 8000).catch(() => null);
-        if (head && head.ok) {
-          results[d.key] = true;
-        } else {
+        if (head && head.ok) results[d.key] = true;
+        else {
           const get = await fetchWithTimeout(d.path, { method: "GET" }, 8000);
           results[d.key] = !!get.ok;
         }
@@ -487,7 +484,7 @@ export default function App() {
 
   const runHealthCheck = useCallback(async () => {
     try {
-      const url = `${API_BASE.replace(/\/+$/, "")}/health`;
+      const url = `${String(API_BASE || "").replace(/\/+$/, "")}/health`;
       const res = await fetchWithTimeout(url, {}, 8000);
       const ok = res.ok;
       setHealth({ ok, last: Date.now() });
@@ -509,10 +506,7 @@ export default function App() {
     };
   }, [runHealthCheck, probeDocs]);
 
-  const addMessage = useCallback((m) => {
-    setMessages((prev) => [...prev, m]);
-  }, []);
-
+  const addMessage = useCallback((m) => setMessages((prev) => [...prev, m]), []);
   const replaceLastAssistant = useCallback((replacement) => {
     setMessages((prev) => {
       const copy = [...prev];
@@ -548,11 +542,7 @@ export default function App() {
     if (!question || isSending) return;
 
     if (question.length > MAX_USER_INPUT_CHARS) {
-      setBanner({
-        type: "error",
-        title: "✂️ Message too long",
-        sub: `Please keep your message under ${MAX_USER_INPUT_CHARS} characters.`,
-      });
+      setBanner({ type: "error", title: "✂️ Message too long", sub: `Please keep your message under ${MAX_USER_INPUT_CHARS} characters.` });
       return;
     }
 
@@ -578,37 +568,19 @@ export default function App() {
       .map((d) => d.label);
 
     if (missingSelected.length) {
-      setBanner({
-        type: "error",
-        title: "📁 Missing file(s)",
-        sub: `These selected docs are not reachable: ${missingSelected.join(", ")}.`,
-      });
-    } else {
-      setBanner(null);
-    }
+      setBanner({ type: "error", title: "📁 Missing file(s)", sub: `These selected docs are not reachable: ${missingSelected.join(", ")}.` });
+    } else setBanner(null);
 
     setIsSending(true);
 
     addMessage({ id: genId(), role: "user", text: question, ts: Date.now() });
-    addMessage({
-      id: genId(),
-      role: "assistant",
-      kind: "loading",
-      text: "",
-      thinkingText: `Analyzing with ${CLOUD_PROVIDER_LABEL}…`,
-      ts: Date.now(),
-    });
-
+    addMessage({ id: genId(), role: "assistant", kind: "loading", text: "", thinkingText: `Analyzing with ${CLOUD_PROVIDER_LABEL}…`, ts: Date.now() });
     setInput("");
 
     const payload = buildPayload({
       question,
       mode,
-      docs: {
-        ...docsForPayload,
-        _availability: docAvail,
-        _activeDocsLabel: activeDocsLabel,
-      },
+      docs: { ...docsForPayload, _availability: docAvail, _activeDocsLabel: activeDocsLabel },
     });
 
     // ✅ IMPORTANT: keep only the route your server actually supports
@@ -623,11 +595,7 @@ export default function App() {
         kind: undefined,
         text: finalText,
         ts: Date.now(),
-        meta: {
-          endpoint: result?.path,
-          status: result?.status,
-          provider: result?.body?.provider || "claude",
-        },
+        meta: { endpoint: result?.path, status: result?.status, provider: result?.body?.provider || "claude" },
       });
 
       setHealth((h) => ({ ...h, ok: true, last: Date.now() }));
@@ -709,11 +677,7 @@ export default function App() {
               Reviews
             </button>
 
-            <button
-              className={`cc-navItem ${resourcesOpen ? "cc-navItemPill is-active" : ""}`}
-              type="button"
-              onClick={() => setResourcesOpen(true)}
-            >
+            <button className={`cc-navItem ${resourcesOpen ? "cc-navItemPill is-active" : ""}`} type="button" onClick={() => setResourcesOpen(true)}>
               Resources
             </button>
 
@@ -734,7 +698,8 @@ export default function App() {
           <div className="cc-main">
             <div className="cc-thread">
               <div className="cc-threadInner">
-                <ReviewsPage />
+                {/* ✅ FIX: pass apiBase so ReviewsPage never crashes on undefined */}
+                <ReviewsPage apiBase={API_BASE} />
               </div>
             </div>
           </div>
@@ -758,9 +723,7 @@ export default function App() {
                     <div className="cc-heroSub">
                       Server: <span style={{ fontWeight: 700 }}>{health.ok == null ? "checking…" : health.ok ? "online" : "offline"}</span>
                       {health.last ? (
-                        <span style={{ marginLeft: 8, color: "rgba(17,24,39,0.45)", fontSize: 12 }}>
-                          ({new Date(health.last).toLocaleTimeString()})
-                        </span>
+                        <span style={{ marginLeft: 8, color: "rgba(17,24,39,0.45)", fontSize: 12 }}>({new Date(health.last).toLocaleTimeString()})</span>
                       ) : null}
                     </div>
                   </div>
