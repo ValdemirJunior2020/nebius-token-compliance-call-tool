@@ -133,7 +133,14 @@
   color:#4CA0FA !important;
   z-index:90;
   line-height:1.05;
+
+  /* ✅ white “shade” around text */
+text-shadow:
+    0 0 2px rgba(120,200,255,0.95),
+    0 0 6px rgba(120,200,255,0.70),
+    0 0 12px rgba(120,200,255,0.45);
 }
+
 
 .cc-navTitleTop{
   font-size:26px;
@@ -933,4 +940,31 @@
 .cc-popoverScrim,
 .cc-popover {
   pointer-events: auto;
+}
+/* Make ALL footer lines small + consistent */
+.cc-footer-note{
+  font-size: 11px;
+  color: #9ca3af;
+  text-align: center;
+  margin-top: 8px;
+  line-height: 1.2;
+}
+
+.cc-footer-dev{
+  font-size: 11px;
+  color: #6b7280;
+  text-align: center;
+  font-weight: 600;
+  margin-top: 6px;
+  line-height: 1.2;
+}
+
+/* ✅ this is the one that’s huge in your screenshot */
+.cc-footer-fine{
+  font-size: 11px !important;
+  color: #9ca3af !important;
+  text-align: center;
+  font-weight: 600 !important;
+  margin-top: 6px;
+  line-height: 1.2;
 }

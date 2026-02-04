@@ -808,9 +808,21 @@ export default function App() {
                   </button>
                 </div>
 
-                <div className="cc-footer-note">
-                  Powered by {CLOUD_PROVIDER_LABEL} • Matrix always included • <span style={{ fontWeight: 700 }}>{remainingChars}</span> chars left
-                </div>
+ <div className="cc-footer-note">
+  Powered by {CLOUD_PROVIDER_LABEL} • Matrix always included •{" "}
+  <span style={{ fontWeight: 700 }}>{remainingChars}</span> chars left
+</div>
+
+<div className="cc-footer-dev">
+  Developed by Valdemir Junior
+</div>
+
+<div className="cc-footer-fine">
+  © 2026 HotelPlanner. All rights reserved.
+</div>
+
+
+
               </div>
             </div>
           </>
