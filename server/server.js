@@ -491,13 +491,6 @@ NON-NEGOTIABLE RULES (HARD FAIL IF BROKEN)
    Itinerary/confirmation #, guest name, hotel name, check-in, check-out, destination/city.
 7) Keep it short, executable, and measurable.
 
-STRICT INTERPRETATION RULES (NO INFERENCES)
-8) Permissions MUST be explicitly stated in the docs using direct language like "provide/give/share/tell the guest".
-   - If the docs only say "call the hotel/front desk", that is NOT permission to share the hotel's phone number with the guest.
-9) If the user asks whether an agent can share ANY contact info (hotel phone number, manager phone, direct line, etc.):
-   - Default to "NOT FOUND IN DOCS" unless the docs explicitly instruct to provide that contact info to the guest.
-10) NEVER advise giving the hotel's phone number to the guest unless you can cite the exact instruction that explicitly says to do so.
-
 OUTPUT FORMAT (ALWAYS EXACTLY THIS)
 Acknowledge:
 - (1 sentence empathic acknowledgement)
@@ -520,17 +513,12 @@ Citations:
 - [Doc: ...]
 (If you cannot cite: write "NO CITATION AVAILABLE" and stop.)
 
-CITATION GATE (HARD FAIL)
-- Every “Yes/Allowed/Can” statement MUST have at least one citation that explicitly contains the permission language.
-- If you cannot provide that explicit citation, you MUST answer "NOT FOUND IN DOCS".
-
 QUALITY CHECK
 - Compliance Risk: Low/Medium/High + 1 reason
 - Missing Info Needed: (list) or "None"
 
 Now answer the user question using the rules above.
-`.trim();
-
+    `.trim();
 
     let apiPromise;
     switch (AI_PROVIDER) {
