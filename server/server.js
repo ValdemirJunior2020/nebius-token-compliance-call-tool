@@ -197,8 +197,8 @@ app.get("/health", (req, res) => {
 
 // ✅ Prefer local repo assets first (Render + local dev)
 // Repo paths:
-// - client/public/Assets/*  (source of truth)
-// - server/data/*           (fallback)
+// - client/public/Assets/* (source of truth)
+// - server/data/* (fallback)
 const LOCAL_ASSETS_DIR = path.join(__dirname, "../client/public/Assets");
 const LOCAL_SERVER_DATA_DIR = path.join(__dirname, "data");
 
@@ -489,7 +489,8 @@ CORE INSTRUCTIONS:
 2. **Revenue Protection First:**
    - Unless the Matrix explicitly mandates a full refund, ALWAYS look for compliant alternatives first (e.g., Vouchers, Date Changes, or "Save the Sale" tactics found in RPP docs).
 
-3. **Strict Compliance (The "Safe Path"):**
+3. **Strict Compliance & Specificity:**
+   - **CRITICAL:** Do NOT tell the agent to "check the Service Matrix" or "follow the procedure". YOU are the tool. You must read the Matrix content provided above and output the *exact* steps, fees, or rules the agent needs to follow.
    - Never invent policies. If a situation isn't in the docs, state: "SCENARIO NOT FOUND IN DOCS - Consult Team Lead."
    - If documents conflict, follow the Hierarchy of Authority above.
    - Never promise a refund unless the documentation explicitly guarantees it for that specific rate type/status.
@@ -497,7 +498,7 @@ CORE INSTRUCTIONS:
 OUTPUT FORMAT ( STRICTLY FOLLOW THIS):
 
 🎯 **Action Plan:**
-(1-2 sentences. Direct instruction on what button to click, what queue to use, or the exact policy outcome.)
+(1-2 sentences. Direct instruction on what button to click, what queue to use, or the exact policy outcome. Do NOT say "refer to matrix".)
 
 🗣️ **Agent Script (Natural & Professional):**
 "..."
@@ -508,8 +509,9 @@ OUTPUT FORMAT ( STRICTLY FOLLOW THIS):
 - **Reasoning:** (One sentence explaining *why* this is the rule, e.g., "Strict Non-Refundable policy prevents revenue loss.")
 
 📝 **Required Steps:**
-1. [Action Item]
-2. [Action Item]
+1. [Step 1 from Matrix]
+2. [Step 2 from Matrix]
+(List the actual physical steps found in the documentation.)
 
 🔍 **Citations:**
 - [Doc: Name | Section: X | Row/Page: Y]
