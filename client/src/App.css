@@ -68,18 +68,19 @@
   padding: 0 14px;
 }
 
-/* ====== BIGGER LOGO CSS ====== */
+/* ====== LOGO FIX (Forces it to stay small) ====== */
+/* ====== FIXED LOGO CSS (Prevents Explosion) ====== */
 .cc-navLogo {
-  height: 52px !important;
-  width: auto !important;
-  object-fit: contain !important;
-  margin-right: 20px !important;
-
-  background: transparent !important;
-  border: none !important;
+  max-height: 32px !important;    /* Strict limit: Fits inside the 62px bar */
+  width: auto !important;         /* Keeps the aspect ratio correct */
+  object-fit: contain !important; /* Ensures the image doesn't stretch */
+  margin-right: 16px !important;  /* Space between logo and buttons */
+  
   display: block !important;
   position: relative !important;
-  z-index: 250 !important; /* kept higher so it stays above title */
+  z-index: 250 !important;
+  background: transparent !important;
+  border: none !important;
 }
 
 /* ====== Nav Item (Light Blue Text) ====== */
@@ -87,16 +88,13 @@
   appearance: none;
   border: 0;
   background: transparent;
-
   color: #4CA0FA;
-
   font-size: 18px;
   font-weight: 700;
   padding: 10px 14px;
   cursor: pointer;
   text-decoration: none;
   flex: 0 0 auto;
-
   position: relative;
   z-index: 200 !important;
 }
@@ -116,54 +114,48 @@
   flex: 1;
 }
 
-.cc-title {
-  display: none;
+/* ====== Nav Title Styling (CCCT) ====== */
+.cc-navTitle {
+  position: absolute;
+  left: 62% !important; /* Offset to right */
+  top: 50%;
+  transform: translate(-50%, -50%);
+  font-family: 'Montserrat', sans-serif;
+  text-align: center;
+  pointer-events: none;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  z-index: 90;
 }
-/* ADD/REPLACE ONLY THIS BLOCK in your App.css (keep everything else the same) */
 
-.cc-navTitle{
-  position:absolute;
-  left:50%;
-  top:50%;
-  transform:translate(-50%,-50%);
-  font-family:'Montserrat',sans-serif;
-  text-align:center;
-  pointer-events:none;
-  background:transparent;
-  color:#4CA0FA !important;
-  z-index:90;
-  line-height:1.05;
-
-  /* ✅ white “shade” around text */
-text-shadow:
+.cc-navTitleMain {
+  font-size: 26px;
+  font-weight: 800;
+  letter-spacing: -0.5px;
+  line-height: 1;
+  color: #4CA0FA !important;
+  text-shadow:
     0 0 2px rgba(120,200,255,0.95),
     0 0 6px rgba(120,200,255,0.70),
     0 0 12px rgba(120,200,255,0.45);
 }
 
-
-.cc-navTitleTop{
-  font-size:26px;
-  font-weight:800;
-  letter-spacing:-0.5px;
-  white-space:nowrap;
+.cc-navTitleSub {
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 1.8px;
+  margin-top: 2px;
+  line-height: 1;
+  text-transform: uppercase;
+  color: rgba(76, 160, 250, 0.85) !important;
 }
 
-.cc-navTitleSub{
-  font-size:10px;
-  font-weight:700;
-  letter-spacing:1.2px;
-  opacity:.9;
-  margin-top:2px;
-  white-space:nowrap;
-  text-transform:uppercase;
-}
-
-
-/* ====== Main ====== */
+/* ====== Main Content Area ====== */
 .cc-main {
   padding-top: 96px;
-  padding-bottom: 190px;
+  padding-bottom: 140px; /* Adjusted for floating footer */
 }
 
 .cc-thread {
@@ -182,7 +174,7 @@ text-shadow:
   height: 18px;
 }
 
-/* ====== Hero ====== */
+/* ====== Hero Section ====== */
 .cc-hero {
   margin: 28px auto 18px;
   text-align: center;
@@ -199,7 +191,7 @@ text-shadow:
   color: rgba(17, 24, 39, 0.5);
 }
 
-/* ====== Messages ====== */
+/* ====== Chat Messages ====== */
 .cc-msg {
   display: flex;
   margin: 14px 0;
@@ -233,110 +225,104 @@ text-shadow:
   white-space: pre-wrap;
 }
 
-/* markdown */
+/* markdown styles */
 .cc-answer {
   font-size: 14px;
   line-height: 1.55;
   color: rgba(17, 24, 39, 0.88);
 }
+.cc-answer p { margin: 0 0 10px; }
+.cc-answer ul, .cc-answer ol { margin: 8px 0 10px 20px; }
+.cc-answer h1, .cc-answer h2, .cc-answer h3 { margin: 12px 0 8px; font-size: 14px; }
+.cc-answer code { background: rgba(17, 24, 39, 0.04); padding: 2px 6px; border-radius: 8px; }
 
-.cc-answer p {
-  margin: 0 0 10px;
-}
+/* Intro Bubble Centering */
+.cc-msg.cc-intro { justify-content: center !important; }
+.cc-msg.cc-intro .cc-bubble { width: 100%; max-width: 620px; margin: 0 auto; text-align: center; }
 
-.cc-answer ul,
-.cc-answer ol {
-  margin: 8px 0 10px 20px;
-}
 
-.cc-answer h1,
-.cc-answer h2,
-.cc-answer h3 {
-  margin: 12px 0 8px;
-  font-size: 14px;
-}
-
-.cc-answer code {
-  background: rgba(17, 24, 39, 0.04);
-  padding: 2px 6px;
-  border-radius: 8px;
-}
-
-/* Center ONLY the welcome bubble */
-.cc-msg.cc-intro {
-  justify-content: center !important;
-}
-.cc-msg.cc-intro .cc-bubble {
-  width: 100%;
-  max-width: 620px;
-  margin: 0 auto;
-  text-align: center;
-}
-
-/* ====== Footer (Light Blue Tint) ====== */
+/* =========================================
+   ====== FLOATING FOOTER (GEMINI STYLE) ======
+   ========================================= */
 .cc-footer {
   position: fixed;
   left: 0;
   right: 0;
   bottom: 0;
-  background: #e8f5ff; /* Light Blue Background */
-  border-top: 1px solid rgba(17, 24, 39, 0.06);
-  z-index: 60;
+  padding-bottom: 20px; /* Space from bottom edge */
+  z-index: 200 !important;
+  pointer-events: none; /* Let clicks pass through empty areas */
+  background: linear-gradient(to top, #ffffff 60%, rgba(255,255,255,0) 100%);
 }
 
 .cc-footer-inner {
-  max-width: 780px;
+  max-width: 800px;
   margin: 0 auto;
-  padding: 10px 12px 10px;
+  padding: 0 16px;
   display: flex;
   flex-direction: column;
   gap: 8px;
+  pointer-events: auto; /* Re-enable clicks on the controls */
 }
 
-.cc-docRow,
-.cc-modeRow {
+/* Compact Control Row (Chips) */
+.cc-controls-row {
   display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
+  gap: 6px;
   align-items: center;
+  flex-wrap: wrap;
   justify-content: center;
+  margin-bottom: 4px;
 }
 
 .cc-chip {
-  border: 1px solid rgba(17, 24, 39, 0.10);
-  background: rgba(255, 255, 255, 0.9);
-  color: rgba(17, 24, 39, 0.75);
-  border-radius: 999px;
-  padding: 6px 10px;
-  font-size: 12px;
+  border: 1px solid rgba(17, 24, 39, 0.08);
+  background: rgba(255, 255, 255, 0.8);
+  backdrop-filter: blur(4px);
+  color: rgba(17, 24, 39, 0.6);
+  border-radius: 8px;
+  padding: 4px 10px;
+  font-size: 11px;
+  font-weight: 600;
   cursor: pointer;
-  user-select: none;
+  transition: all 0.2s ease;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.05);
 }
 
 .cc-chip:hover {
-  background: #ffffff;
+  background: #fff;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 6px rgba(0,0,0,0.08);
 }
 
-/* Active Chip: Navy Blue Background, Light Blue Text */
 .cc-chip.is-active {
-  background: linear-gradient(to right, #0E3966, #05203d);
-  color: #4CA0FA !important;
-  border-color: rgba(76, 160, 250, 0.65) !important;
-  box-shadow: 0 10px 22px rgba(14, 57, 102, 0.25), inset 0 0 0 1px rgba(76, 160, 250, 0.20);
-  font-weight: 800;
+  background: #0E3966; /* Navy Brand Color */
+  color: #fff !important;
+  border-color: #0E3966 !important;
+  box-shadow: 0 4px 12px rgba(14, 57, 102, 0.3);
 }
 
+.cc-chip.is-locked { cursor: default; }
+.cc-chip.is-disabled { cursor: not-allowed; opacity: 0.5; }
+
+/* The Main Input "Capsule" */
 .cc-inputShell {
   width: 100%;
   display: grid;
-  grid-template-columns: 40px 1fr 40px 44px;
+  grid-template-columns: 44px 1fr 44px 44px; /* Icons on sides */
   gap: 8px;
   align-items: end;
-  background: rgba(255, 255, 255, 0.95);
-  border: 1px solid rgba(17, 24, 39, 0.10);
-  border-radius: 16px;
-  padding: 10px 10px;
-  box-shadow: 0 1px 0 rgba(17, 24, 39, 0.03);
+  background: #ffffff;
+  border: 1px solid rgba(17, 24, 39, 0.12);
+  border-radius: 24px; /* Fully rounded capsule */
+  padding: 8px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08); /* Float shadow */
+  transition: box-shadow 0.2s;
+}
+
+.cc-inputShell:focus-within {
+  box-shadow: 0 12px 32px rgba(14, 57, 102, 0.15); /* Glow on focus */
+  border-color: #4CA0FA;
 }
 
 .cc-textarea {
@@ -345,55 +331,50 @@ text-shadow:
   border: 0;
   outline: none;
   background: transparent;
-  font-size: 14px;
-  line-height: 1.4;
-  color: rgba(17, 24, 39, 0.9);
-  padding: 6px 6px;
-  min-height: 28px;
-  max-height: 200px;
+  font-size: 15px;
+  line-height: 1.5;
+  color: #111827;
+  padding: 8px 4px;
+  min-height: 24px;
+  max-height: 180px;
 }
 
-.cc-iconBtn {
-  height: 36px;
-  width: 36px;
-  border-radius: 12px;
-  border: 1px solid rgba(17, 24, 39, 0.10);
-  background: #ffffff;
-  color: rgba(17, 24, 39, 0.55);
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  cursor: not-allowed;
-}
-
-.cc-plus {
-  font-size: 18px;
-  line-height: 1;
-}
-
-.cc-sendBtn {
-  height: 36px;
-  width: 44px;
-  border-radius: 12px;
-  border: 1px solid rgba(17, 24, 39, 0.10);
-  background: #ffffff;
-  color: rgba(17, 24, 39, 0.75);
-  display: inline-flex;
+/* Buttons */
+.cc-iconBtn, .cc-sendBtn {
+  height: 40px;
+  width: 40px;
+  border-radius: 50%; /* Circles */
+  border: none;
+  background: transparent;
+  color: rgba(17, 24, 39, 0.5);
+  display: flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
+  transition: background 0.2s;
+}
+
+.cc-iconBtn:hover, .cc-sendBtn:hover {
+  background: rgba(17, 24, 39, 0.05);
+  color: #111827;
 }
 
 .cc-sendBtn:disabled {
-  opacity: 0.45;
-  cursor: not-allowed;
+  opacity: 0.3;
+  cursor: default;
+  background: transparent;
 }
 
-.cc-footer-note {
-  font-size: 11px;
-  color: rgba(17, 24, 39, 0.45);
+.cc-plus { font-size: 20px; }
+
+/* Minimal Single-Line Footer Text */
+.cc-minimal-info {
+  font-size: 10px;
+  color: rgba(17, 24, 39, 0.4);
   text-align: center;
-  padding-bottom: 2px;
+  margin-top: 4px;
+  font-weight: 500;
+  letter-spacing: 0.3px;
 }
 
 /* ====== Loading / errors ====== */
@@ -422,8 +403,6 @@ text-shadow:
   color: #b42318;
   white-space: pre-wrap;
 }
-
-
 
 .cc-errorVideo {
   width: 520px;
@@ -550,24 +529,6 @@ text-shadow:
 
 .cc-pillBtnGhost {
   background: transparent;
-}
-
-/* ====== Chip Animation ====== */
-.cc-chip {
-  transition: transform 120ms ease, box-shadow 140ms ease, background 140ms ease, border-color 140ms ease, color 140ms ease;
-}
-.cc-chip:active {
-  transform: translateY(1px);
-}
-.cc-chip.is-locked {
-  cursor: default;
-}
-.cc-chip.is-disabled {
-  cursor: not-allowed;
-}
-.cc-chip:focus-visible {
-  outline: 3px solid rgba(76, 160, 250, 0.55);
-  outline-offset: 2px;
 }
 
 /* ===================== Reviews Page ===================== */
@@ -892,79 +853,4 @@ text-shadow:
   .rv-miniGrid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
-}
-/* ADD THESE LINES (keep all your existing CSS below/above — just paste these at the end) */
-
-.cc-navTitle {
-  pointer-events: none;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-}
-
-.cc-navTitleMain {
-  font-family: 'Montserrat', sans-serif;
-  font-size: 26px;
-  font-weight: 800;
-  letter-spacing: -0.5px;
-  line-height: 1;
-  color: #4CA0FA !important;
-}
-
-.cc-navTitleSub {
-  font-family: 'Montserrat', sans-serif;
-  font-size: 10px;              /* ✅ very small */
-  font-weight: 800;
-  letter-spacing: 1.8px;        /* ✅ tight “badge” look */
-  margin-top: 2px;
-  line-height: 1;
-  color: rgba(76, 160, 250, 0.85) !important;
-}
-/* ADD THESE LINES AT THE VERY END OF YOUR App.css */
-
-/* ✅ FIX #2: move CCCT block more to the right (without changing HTML) */
-.cc-navTitle {
-  left: 62% !important;  /* was 50% */
-}
-
-/* ✅ FIX #3: make sure NOTHING overlays the footer send button */
-.cc-footer {
-  z-index: 200 !important;
-}
-.cc-footer * {
-  pointer-events: auto !important;
-}
-
-/* (optional safety) if any popover/scrim is still open, it can block clicks */
-.cc-popoverScrim,
-.cc-popover {
-  pointer-events: auto;
-}
-/* Make ALL footer lines small + consistent */
-.cc-footer-note{
-  font-size: 11px;
-  color: #9ca3af;
-  text-align: center;
-  margin-top: 8px;
-  line-height: 1.2;
-}
-
-.cc-footer-dev{
-  font-size: 11px;
-  color: #6b7280;
-  text-align: center;
-  font-weight: 600;
-  margin-top: 6px;
-  line-height: 1.2;
-}
-
-/* ✅ this is the one that’s huge in your screenshot */
-.cc-footer-fine{
-  font-size: 11px !important;
-  color: #9ca3af !important;
-  text-align: center;
-  font-weight: 600 !important;
-  margin-top: 6px;
-  line-height: 1.2;
 }

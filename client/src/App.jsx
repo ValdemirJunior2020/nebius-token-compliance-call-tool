@@ -741,16 +741,21 @@ export default function App() {
             {/* Footer (Chat only) */}
             <div className="cc-footer">
               <div className="cc-footer-inner">
-                <div className="cc-modeRow">
+
+                {/* 1. Combined Controls Row: Mode + Docs */}
+                <div className="cc-controls-row">
+                  {/* Mode Toggles */}
                   <button className={`cc-chip ${mode === "cloud" ? "is-active" : ""}`} type="button" onClick={() => setModeSafe("cloud")}>
                     Cloud
                   </button>
                   <button className={`cc-chip ${mode === "local" ? "is-active" : ""}`} type="button" onClick={() => setModeSafe("local")}>
                     Local
                   </button>
-                </div>
 
-                <div className="cc-docRow">
+                  {/* Vertical Divider */}
+                  <div style={{ width: 1, height: 16, background: 'rgba(0,0,0,0.1)', margin: '0 8px' }} />
+
+                  {/* Doc Toggles */}
                   {DOC_META.map((d) => {
                     const locked = !!d.locked;
                     const active = locked ? true : !!docs[d.key];
@@ -780,6 +785,7 @@ export default function App() {
                   })}
                 </div>
 
+                {/* 2. Floating Input Capsule */}
                 <div className="cc-inputShell">
                   <button className="cc-iconBtn" type="button" disabled title="Attachments disabled">
                     <span className="cc-plus">+</span>
@@ -800,28 +806,29 @@ export default function App() {
                     spellCheck
                   />
 
-                  <button className="cc-sendBtn" type="button" onClick={clearInput} disabled={isSending || !input.trim()} title="Clear">
-                    ✕
-                  </button>
-                  <button className="cc-sendBtn" type="button" onClick={send} disabled={isSending || !input.trim()} title="Send">
+                  {/* Clear Button (only show if input exists) */}
+                  {input.length > 0 ? (
+                    <button className="cc-sendBtn" type="button" onClick={clearInput} title="Clear">
+                      ✕
+                    </button>
+                  ) : null}
+
+                  <button 
+                    className="cc-sendBtn" 
+                    type="button" 
+                    onClick={send} 
+                    disabled={isSending || !input.trim()} 
+                    title="Send"
+                    style={{ color: input.trim() ? '#4CA0FA' : undefined }}
+                  >
                     ➤
                   </button>
                 </div>
 
- <div className="cc-footer-note">
-  Powered by {CLOUD_PROVIDER_LABEL} • Matrix always included •{" "}
-  <span style={{ fontWeight: 700 }}>{remainingChars}</span> chars left
-</div>
-
-<div className="cc-footer-dev">
-  Developed by Valdemir Junior
-</div>
-
-<div className="cc-footer-fine">
-  © 2026 HotelPlanner. All rights reserved.
-</div>
-
-
+                {/* 3. Minimal Info */}
+                <div className="cc-minimal-info">
+                  {remainingChars} chars • Powered by {CLOUD_PROVIDER_LABEL} • Dev: Valdemir Junior • © 2026 HotelPlanner
+                </div>
 
               </div>
             </div>
