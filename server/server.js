@@ -1,5 +1,7 @@
-// server/server.js
-// Anthropic (Claude) + Excel + JSON docs + FIXED CORS + timeoutPromise + Google Sheets Reviews
+// server/server.js - Anthropic (Claude) + Excel + JSON docs + FIXED CORS + Reviews (Google Sheets)
+// ✅ Fixes 502/health timeouts by NOT blocking startup with doc loading (preloads in background)
+// ✅ Loads .env from repo root AND server/.env for local dev
+// ✅ Adds safe guards: global error handlers + docs-loading flags
 
 import express from "express";
 import dotenv from "dotenv";
@@ -12,8 +14,14 @@ import { listReviews, upsertReview } from "./lib/googleSheetsReviews.js";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Load .env locally (Render uses env vars directly; this won't hurt)
-dotenv.config({ path: path.join(process.cwd(), ".env") });
+// -------------------- dotenv (root + server/.env) --------------------
+const ROOT_ENV = path.join(process.cwd(), ".env");
+const SERVER_ENV = path.join(__dirname, ".env");
+
+// Load repo-root first (Render uses Environment Vars anyway; this is for local dev)
+dotenv.config({ path: ROOT_ENV });
+// Then server/.env if it exists (local dev convenience)
+if (fs.existsSync(SERVER_ENV)) dotenv.config({ path: SERVER_ENV });
 
 const app = express();
 
@@ -34,6 +42,18 @@ const errlog = (...a) => console.error("[server]", ...a);
 
 let DOCUMENT_CACHE = {};
 let LAST_LOAD = 0;
+
+// ✅ track loading so /health never “hangs”
+let DOCS_LOADING = false;
+let DOCS_LOADING_PROMISE = null;
+
+// -------------------- Global crash guards (log + keep process alive) --------------------
+process.on("unhandledRejection", (reason) => {
+  console.error("[server] ❌ UnhandledRejection:", reason);
+});
+process.on("uncaughtException", (error) => {
+  console.error("[server] ❌ UncaughtException:", error);
+});
 
 // -------------------- CORS (FIXED) --------------------
 const FRONTEND_URLS = String(
@@ -64,7 +84,7 @@ function isNetlifySubdomain(origin) {
 app.use((req, res, next) => {
   const origin = req.headers.origin;
 
-  // allow server-to-server / curl / render health checks
+  // Allow server-to-server calls (no Origin)
   if (!origin) return next();
 
   const cleanOrigin = String(origin).replace(/\/+$/, "");
@@ -94,80 +114,44 @@ app.use((req, res, next) => {
 // -------------------- body parser --------------------
 app.use(express.json({ limit: "2mb" }));
 
-// -------------------- Google Sheets env helpers --------------------
-function normalizePrivateKey(raw) {
-  if (!raw) return "";
-  const s = String(raw).trim();
-
-  // already multiline
-  if (s.includes("-----BEGIN PRIVATE KEY-----") && s.includes("\n") && s.includes("-----END PRIVATE KEY-----")) {
-    return s;
-  }
-
-  // convert \n to real newlines
-  const unescaped = s.replace(/\\n/g, "\n");
-
-  // strip accidental wrapping quotes
-  const dequoted = unescaped.replace(/^"+|"+$/g, "").replace(/^'+|'+$/g, "");
-
-  return dequoted.trim();
-}
-
-function sheetsEnvStatus() {
-  const email = String(process.env.GOOGLE_SHEETS_CLIENT_EMAIL || "").trim();
-  const keyRaw = process.env.GOOGLE_SHEETS_PRIVATE_KEY || "";
-  const key = normalizePrivateKey(keyRaw);
-  const sheetId = String(process.env.GOOGLE_SHEETS_SPREADSHEET_ID || "").trim();
-  const tab = String(process.env.GOOGLE_SHEETS_TAB_NAME || "").trim();
-
-  const keyLooksValid =
-    key.length > 0 && key.includes("-----BEGIN PRIVATE KEY-----") && key.includes("-----END PRIVATE KEY-----");
-
-  return {
-    emailSet: !!email,
-    keySet: !!keyRaw,
-    keyLooksValid,
-    sheetIdSet: !!sheetId,
-    tabSet: !!tab,
-    keyLen: key.length,
-  };
-}
-
 // -------------------- Reviews (Google Sheets) --------------------
 app.get("/api/reviews", async (req, res) => {
   try {
     const email = String(req.query.email || "").trim();
     const callCenter = String(req.query.callCenter || "").trim();
+
     const out = await listReviews({
       email: email || undefined,
       callCenter: callCenter || undefined,
     });
+
     res.json({ ok: true, ...out });
   } catch (e) {
-    res.status(500).json({ ok: false, error: e.message || "Failed to load reviews" });
+    const msg = e?.message || "Failed to load reviews";
+    console.error("[REVIEWS] list error:", e);
+    res.status(500).json({ ok: false, error: msg });
   }
 });
 
 app.post("/api/reviews/upsert", async (req, res) => {
   try {
-    console.log("[REVIEWS] upsert body:", req.body);
-
     const { callCenter, name, email, stars, comment } = req.body || {};
+    log("[REVIEWS] upsert body:", { callCenter, name, email, stars, comment: String(comment || "").slice(0, 80) });
+
     const out = await upsertReview({ callCenter, name, email, stars, comment });
 
-    console.log("[REVIEWS] upsert result:", out.action, out.review?.reviewId);
+    log("[REVIEWS] upsert result:", out.action, out.review?.reviewId);
     res.json({ ok: true, ...out });
   } catch (e) {
     console.error("[REVIEWS] upsert error:", e);
-    const msg = e.message || "Failed to save review";
-    const status = /missing field|invalid email/i.test(msg) ? 400 : 500;
+    const msg = e?.message || "Failed to save review";
+    const status = /missing field|invalid email|invalid stars|invalid/i.test(msg) ? 400 : 500;
     res.status(status).json({ ok: false, error: msg });
   }
 });
 
 // -------------------- health --------------------
 app.get("/health", (req, res) => {
-  const sheets = sheetsEnvStatus();
   res.json({
     ok: true,
     port: PORT,
@@ -175,27 +159,35 @@ app.get("/health", (req, res) => {
     nebiusConfigured: !!NEBIUS_API_KEY,
     kimiConfigured: !!KIMI_API_KEY,
     anthropicConfigured: !!ANTHROPIC_API_KEY,
-    documentsCached: Object.keys(DOCUMENT_CACHE),
-    lastLoad: LAST_LOAD ? new Date(LAST_LOAD).toISOString() : null,
-    frontendAllowed: Array.from(ALLOWED_ORIGINS),
-    sheets: {
-      emailSet: sheets.emailSet,
-      keySet: sheets.keySet,
-      keyLooksValid: sheets.keyLooksValid,
-      sheetIdSet: sheets.sheetIdSet,
-      tabSet: sheets.tabSet,
-      keyLen: sheets.keyLen,
+    sheetsConfigured: {
+      email: !!process.env.GOOGLE_SHEETS_CLIENT_EMAIL,
+      key: !!process.env.GOOGLE_SHEETS_PRIVATE_KEY,
+      sheetId: !!process.env.GOOGLE_SHEETS_SPREADSHEET_ID,
+      tab: !!process.env.GOOGLE_SHEETS_TAB_NAME,
     },
+    docs: {
+      cached: Object.keys(DOCUMENT_CACHE),
+      lastLoad: LAST_LOAD ? new Date(LAST_LOAD).toISOString() : null,
+      loading: DOCS_LOADING,
+    },
+    frontendAllowed: Array.from(ALLOWED_ORIGINS),
     ts: new Date().toISOString(),
   });
 });
 
 // -------------------- docs loading --------------------
+// ✅ Prefer local repo assets first (Render + local dev)
 const LOCAL_ASSETS_DIR = path.join(__dirname, "../client/public/Assets");
 const LOCAL_SERVER_DATA_DIR = path.join(__dirname, "data");
 
+// ✅ Netlify/Frontend base (only used as final fallback)
 function getDocsBase() {
-  return process.env.DOCS_BASE_URL || FRONTEND_URLS[0] || FRONTEND_URL_DEV || "http://localhost:5173";
+  return (
+    process.env.DOCS_BASE_URL ||
+    FRONTEND_URLS[0] ||
+    FRONTEND_URL_DEV ||
+    "http://localhost:5173"
+  );
 }
 
 function existsFile(p) {
@@ -217,6 +209,7 @@ function resolveLocalDocPath(fileName) {
 }
 
 async function fetchExcelDocument(docName, fileName) {
+  // 1) LOCAL FIRST
   const localPath = resolveLocalDocPath(fileName);
   if (localPath) {
     log(`Loading ${docName} from local: ${localPath}`);
@@ -224,6 +217,7 @@ async function fetchExcelDocument(docName, fileName) {
     return parseWorkbook(workbook, docName);
   }
 
+  // 2) REMOTE FALLBACK
   const docsBase = getDocsBase();
   const netlifyUrl = `${String(docsBase).replace(/\/+$/, "")}/Assets/${encodeURIComponent(fileName)}`;
   log(`Fetching ${docName} from remote: ${netlifyUrl}`);
@@ -237,6 +231,7 @@ async function fetchExcelDocument(docName, fileName) {
 }
 
 async function fetchJsonDocument(docName, fileName) {
+  // 1) LOCAL FIRST
   const localPath = resolveLocalDocPath(fileName);
   if (localPath) {
     log(`Loading ${docName} from local: ${localPath}`);
@@ -246,6 +241,7 @@ async function fetchJsonDocument(docName, fileName) {
     return json;
   }
 
+  // 2) REMOTE FALLBACK
   const docsBase = getDocsBase();
   const netlifyUrl = `${String(docsBase).replace(/\/+$/, "")}/Assets/${encodeURIComponent(fileName)}`;
   log(`Fetching ${docName} from remote: ${netlifyUrl}`);
@@ -269,7 +265,10 @@ function parseWorkbook(workbook, docName) {
 }
 
 async function loadDocuments(force = false) {
-  if (Object.keys(DOCUMENT_CACHE).length > 0 && !force) return;
+  if (!force && Object.keys(DOCUMENT_CACHE).length > 0) return;
+
+  // prevent overlapping loads
+  if (DOCS_LOADING_PROMISE && !force) return DOCS_LOADING_PROMISE;
 
   const docs = [
     { key: "qaVoice", file: "qa-voice.xlsx", name: "QA Voice", kind: "excel" },
@@ -279,41 +278,40 @@ async function loadDocuments(force = false) {
     { key: "rppGuide", file: "rpp_protection_guide.json", name: "RPP Protection Guide", kind: "json" },
   ];
 
-  const results = [];
+  DOCS_LOADING = true;
 
-  for (const doc of docs) {
-    const t0 = Date.now();
-    try {
-      const data =
-        doc.kind === "json"
-          ? await fetchJsonDocument(doc.name, doc.file)
-          : await fetchExcelDocument(doc.name, doc.file);
+  DOCS_LOADING_PROMISE = (async () => {
+    const timings = [];
 
-      DOCUMENT_CACHE[doc.key] = data;
+    for (const doc of docs) {
+      const t0 = Date.now();
+      try {
+        DOCUMENT_CACHE[doc.key] =
+          doc.kind === "json"
+            ? await fetchJsonDocument(doc.name, doc.file)
+            : await fetchExcelDocument(doc.name, doc.file);
 
-      results.push({ name: doc.name, file: doc.file, ok: true, ms: Date.now() - t0 });
-    } catch (e) {
-      results.push({
-        name: doc.name,
-        file: doc.file,
-        ok: false,
-        ms: Date.now() - t0,
-        error: e?.message || String(e),
-      });
-      errlog(`❌ Failed to load ${doc.name}:`, e?.message || e);
+        timings.push({ ok: true, name: doc.name, file: doc.file, ms: Date.now() - t0 });
+      } catch (e) {
+        timings.push({ ok: false, name: doc.name, file: doc.file, ms: Date.now() - t0, err: e?.message || String(e) });
+        errlog(`❌ Failed to load ${doc.name}:`, e?.message || e);
+      }
     }
-  }
 
-  LAST_LOAD = Date.now();
+    LAST_LOAD = Date.now();
+    DOCS_LOADING = false;
 
-  console.log("📚 Document load summary:");
-  for (const r of results) {
-    if (r.ok) console.log(`✅ ${r.name} (${r.file}) in ${r.ms}ms`);
-    else console.log(`❌ ${r.name} (${r.file}) in ${r.ms}ms -> ${r.error}`);
-  }
+    console.log("📚 Document load summary:");
+    for (const r of timings) {
+      console.log(`${r.ok ? "✅" : "❌"} ${r.name} (${r.file}) in ${r.ms}ms${r.ok ? "" : ` :: ${r.err}`}`);
+    }
+    console.log(`📦 Cached docs: ${Object.keys(DOCUMENT_CACHE).join(", ") || "(none)"}`);
+    console.log("✅ Documents load finished.");
 
-  const cached = Object.keys(DOCUMENT_CACHE);
-  console.log(`📦 Cached docs: ${cached.length ? cached.join(", ") : "(none)"}`);
+    DOCS_LOADING_PROMISE = null;
+  })();
+
+  return DOCS_LOADING_PROMISE;
 }
 
 function buildContext(docsSelection) {
@@ -362,14 +360,14 @@ async function callNebius(question, systemPrompt) {
 
   if (!response.ok) {
     const err = await response.json().catch(() => ({}));
-    const errorMsg = err.error?.message || `Nebius API error: ${response.status}`;
+    const errorMsg = err?.error?.message || `Nebius API error: ${response.status}`;
     const e = new Error(errorMsg);
     e.status = response.status;
     throw e;
   }
 
   const data = await response.json();
-  return data.choices[0]?.message?.content || "No response";
+  return data?.choices?.[0]?.message?.content || "No response";
 }
 
 async function callKimi(question, systemPrompt) {
@@ -392,14 +390,14 @@ async function callKimi(question, systemPrompt) {
 
   if (!response.ok) {
     const err = await response.json().catch(() => ({}));
-    const errorMsg = err.error?.message || `Kimi API error: ${response.status}`;
+    const errorMsg = err?.error?.message || `Kimi API error: ${response.status}`;
     const e = new Error(errorMsg);
     e.status = response.status;
     throw e;
   }
 
   const data = await response.json();
-  return data.choices[0]?.message?.content || "No response";
+  return data?.choices?.[0]?.message?.content || "No response";
 }
 
 async function callAnthropic(question, systemPrompt) {
@@ -414,18 +412,22 @@ async function callAnthropic(question, systemPrompt) {
     messages: [{ role: "user", content: question }],
   });
 
-  return msg.content[0]?.text || "No response";
+  return msg?.content?.[0]?.text || "No response";
 }
 
 // -------------------- main handler --------------------
 async function handleAsk(req, res) {
   const reqId = `req_${Date.now()}`;
-  const { question, mode = "cloud", docs = {} } = req.body;
+  const { question, mode = "cloud", docs = {} } = req.body || {};
 
   log(`[${reqId}] Question: ${String(question || "").slice(0, 120)}...`);
   if (!question) return res.status(400).json({ ok: false, error: "Missing question" });
 
-  if (Object.keys(DOCUMENT_CACHE).length === 0) await loadDocuments();
+  // lazy-load docs on first ask (non-blocking)
+  if (Object.keys(DOCUMENT_CACHE).length === 0 && !DOCS_LOADING) {
+    // fire and forget
+    loadDocuments(false).catch((e) => errlog("Doc load error:", e?.message || e));
+  }
 
   if (mode === "local") {
     return res.json({
@@ -526,15 +528,20 @@ Now answer the user question using the rules above.
       ok: true,
       answer,
       provider: AI_PROVIDER,
-      model: AI_PROVIDER === "nebius" ? NEBIUS_MODEL : AI_PROVIDER === "kimi" ? KIMI_MODEL : ANTHROPIC_MODEL,
+      model:
+        AI_PROVIDER === "nebius"
+          ? NEBIUS_MODEL
+          : AI_PROVIDER === "kimi"
+          ? KIMI_MODEL
+          : ANTHROPIC_MODEL,
     });
   } catch (error) {
     errlog(`[${reqId}] Error:`, error?.message || error);
-    const status = error.status || 500;
+    const status = error?.status || 500;
 
     return res.status(status).json({
       ok: false,
-      error: error.message || "Unknown server error",
+      error: error?.message || "Unknown server error",
       provider: AI_PROVIDER,
     });
   }
@@ -549,7 +556,7 @@ app.post("/admin/reload-docs", async (req, res) => {
     await loadDocuments(true);
     res.json({ ok: true, message: "Documents reloaded", cached: Object.keys(DOCUMENT_CACHE) });
   } catch (e) {
-    res.status(500).json({ ok: false, error: e.message });
+    res.status(500).json({ ok: false, error: e?.message || "Failed to reload docs" });
   }
 });
 
@@ -562,7 +569,7 @@ app.use((req, res) => {
   });
 });
 
-app.listen(PORT, async () => {
+app.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
   console.log(`🌐 Allowed Frontends: ${Array.from(ALLOWED_ORIGINS).join(", ")}`);
   console.log(`🤖 Current Provider: ${AI_PROVIDER.toUpperCase()}`);
@@ -570,29 +577,22 @@ app.listen(PORT, async () => {
   console.log(`🔑 Kimi: ${KIMI_API_KEY ? "✅" : "❌"}`);
   console.log(`🔑 Anthropic: ${ANTHROPIC_API_KEY ? "✅" : "❌"}`);
 
-  const sheets = sheetsEnvStatus();
   console.log(
-    `🧾 Sheets: email=${sheets.emailSet ? "✅" : "❌"} key=${sheets.keyLooksValid ? "✅" : "❌"} sheetId=${
-      sheets.sheetIdSet ? "✅" : "❌"
-    } tab=${sheets.tabSet ? "✅" : "❌"}`
+    `🧾 Sheets: email=${process.env.GOOGLE_SHEETS_CLIENT_EMAIL ? "✅" : "❌"} key=${
+      process.env.GOOGLE_SHEETS_PRIVATE_KEY ? "✅" : "❌"
+    } sheetId=${process.env.GOOGLE_SHEETS_SPREADSHEET_ID ? "✅" : "❌"} tab=${
+      process.env.GOOGLE_SHEETS_TAB_NAME ? "✅" : "❌"
+    }`
   );
 
-  const currentKey = { nebius: NEBIUS_API_KEY, kimi: KIMI_API_KEY, anthropic: ANTHROPIC_API_KEY }[AI_PROVIDER];
-
-  if (!currentKey) {
+  // ✅ IMPORTANT: preload docs in the background so /health never gets blocked
+  const hasAnyKey = { nebius: NEBIUS_API_KEY, kimi: KIMI_API_KEY, anthropic: ANTHROPIC_API_KEY }[AI_PROVIDER];
+  if (hasAnyKey) {
+    console.log("⏳ Loading documents (background)...");
+    setTimeout(() => {
+      loadDocuments(false).catch((e) => errlog("Doc load error:", e?.message || e));
+    }, 0);
+  } else {
     console.log(`⚠️  No API key for ${AI_PROVIDER}`);
-    return;
-  }
-
-  console.log("⏳ Loading documents...");
-  try {
-    const timeoutMs = 20000;
-    await Promise.race([
-      loadDocuments(true),
-      new Promise((_, rej) => setTimeout(() => rej(new Error(`Doc load timeout after ${timeoutMs}ms`)), timeoutMs)),
-    ]);
-    console.log("✅ Documents load finished.");
-  } catch (e) {
-    console.log(`❌ Documents load failed at startup: ${e?.message || e}`);
   }
 });
