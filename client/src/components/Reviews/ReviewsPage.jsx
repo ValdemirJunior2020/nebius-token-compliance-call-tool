@@ -1,7 +1,8 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import StarRating from "./StarRating.jsx";
 
-const CALL_CENTERS = ["Buwelo", "Concentrix", "WNS", "Ideal", "TEP"];
+const CALL_CENTERS = ["Buwelo", "Concentrix", "WNS", "Ideal", "TEP", "Hotel-Planner"];
+
 
 function norm(s) {
   return String(s ?? "").trim();
@@ -14,33 +15,22 @@ function isEmail(s) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e);
 }
 function averageStars(rows) {
-  const list = Array.isArray(rows) ? rows : [];
-  if (!list.length) return 0;
-  const sum = list.reduce((a, r) => a + (Number(r?.stars) || 0), 0);
-  return Math.round((sum / list.length) * 10) / 10;
-}
-
-// ✅ safe base even if prop missing
-function cleanBase(apiBase) {
-  const base = norm(apiBase);
-  return (base || window.location.origin).replace(/\/+$/, "");
-}
-
-// ✅ safe string formatting to avoid ".replace of undefined" anywhere
-function safeStr(v) {
-  if (v == null) return "";
-  if (typeof v === "string") return v;
-  try {
-    return String(v);
-  } catch {
-    return "";
-  }
+  if (!rows.length) return 0;
+  const sum = rows.reduce((a, r) => a + (Number(r.stars) || 0), 0);
+  return Math.round((sum / rows.length) * 10) / 10;
 }
 
 export default function ReviewsPage({ apiBase }) {
-  const base = useMemo(() => cleanBase(apiBase), [apiBase]);
+  const BASE = useMemo(
+    () =>
+      String(apiBase || import.meta.env?.VITE_API_BASE || "http://localhost:5050").replace(
+        /\/+$/,
+        ""
+      ),
+    [apiBase]
+  );
 
-  const [tab, setTab] = useState("write"); // write | view
+  const [tab, setTab] = useState("view"); // view | write
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [okMsg, setOkMsg] = useState("");
@@ -51,6 +41,10 @@ export default function ReviewsPage({ apiBase }) {
   const [email, setEmail] = useState("");
   const [stars, setStars] = useState(5);
   const [comment, setComment] = useState("");
+
+  // view filters
+  const [filterCC, setFilterCC] = useState("All");
+  const [search, setSearch] = useState("");
 
   const abortRef = useRef(null);
 
@@ -74,31 +68,12 @@ export default function ReviewsPage({ apiBase }) {
     const body = isJsonRes ? await res.json().catch(() => null) : await res.text().catch(() => "");
 
     if (!res.ok) {
-      const msg =
-        (body && typeof body === "object" && body.error) ||
-        (typeof body === "string" && body) ||
-        res.statusText ||
-        "Request failed";
+      const msg = (body && body.error) || (typeof body === "string" ? body : "Request failed");
       const e = new Error(String(msg));
       e.status = res.status;
-      e.body = body;
       throw e;
     }
     return body;
-  }
-
-  async function ping() {
-    setError("");
-    setOkMsg("");
-    setLoading(true);
-    try {
-      const data = await fetchJson(`${base}/api/reviews/ping`);
-      setOkMsg(data?.ok ? "Reviews API online ✅" : "Ping OK ✅");
-    } catch (e) {
-      setError(e?.message || "Ping failed");
-    } finally {
-      setLoading(false);
-    }
   }
 
   async function loadAll() {
@@ -106,11 +81,11 @@ export default function ReviewsPage({ apiBase }) {
     setOkMsg("");
     setLoading(true);
     try {
-      const data = await fetchJson(`${base}/api/reviews`);
+      const url = `${BASE}/api/reviews`;
+      const data = await fetchJson(url);
       setReviews(Array.isArray(data?.reviews) ? data.reviews : []);
     } catch (e) {
       setError(e?.message || "Failed to load reviews");
-      setReviews([]);
     } finally {
       setLoading(false);
     }
@@ -120,14 +95,13 @@ export default function ReviewsPage({ apiBase }) {
     setError("");
     setOkMsg("");
     const em = norm(email);
-    if (!isEmail(em)) {
-      setError("Please enter a valid email first.");
-      return;
-    }
+    if (!isEmail(em)) return setError("Please enter a valid email first.");
+
     setLoading(true);
     try {
       const qs = new URLSearchParams({ email: em, callCenter: norm(callCenter) });
-      const data = await fetchJson(`${base}/api/reviews?${qs.toString()}`);
+      const url = `${BASE}/api/reviews?${qs.toString()}`;
+      const data = await fetchJson(url);
       const mine = Array.isArray(data?.reviews) ? data.reviews[0] : null;
 
       if (!mine) {
@@ -135,9 +109,9 @@ export default function ReviewsPage({ apiBase }) {
         return;
       }
 
-      setName(safeStr(mine?.name));
-      setStars(Number(mine?.stars) || 5);
-      setComment(safeStr(mine?.comment));
+      setName(mine.name || "");
+      setStars(Number(mine.stars) || 5);
+      setComment(mine.comment || "");
       setOkMsg("Loaded your existing review. Edit and click Save.");
     } catch (e) {
       setError(e?.message || "Failed to find your review");
@@ -163,12 +137,14 @@ export default function ReviewsPage({ apiBase }) {
 
     setLoading(true);
     try {
-      const data = await fetchJson(`${base}/api/reviews/upsert`, {
+      const url = `${BASE}/api/reviews/upsert`;
+      const data = await fetchJson(url, {
         method: "POST",
         body: JSON.stringify({ callCenter: cc, name: nm, email: em, stars: st, comment: cm }),
       });
 
       setOkMsg(data?.action === "updated" ? "Review updated ✅" : "Review saved ✅");
+      setTab("view");
       await loadAll();
     } catch (e) {
       setError(e?.message || "Failed to save review");
@@ -181,17 +157,51 @@ export default function ReviewsPage({ apiBase }) {
     loadAll();
     return () => abortRef.current?.abort?.();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [BASE]);
 
   const stats = useMemo(() => {
     const rows = Array.isArray(reviews) ? reviews : [];
     const avg = averageStars(rows);
     const counts = CALL_CENTERS.map((cc) => {
-      const list = rows.filter((r) => normKey(r?.callCenter) === normKey(cc));
+      const list = rows.filter((r) => normKey(r.callCenter) === normKey(cc));
       return { callCenter: cc, count: list.length, avg: averageStars(list) };
     });
     return { total: rows.length, avg, counts };
   }, [reviews]);
+
+  const filtered = useMemo(() => {
+    let rows = Array.isArray(reviews) ? [...reviews] : [];
+
+    // newest first
+    rows.sort((a, b) => {
+      const da = new Date(a.updatedAt || a.createdAt || 0).getTime();
+      const db = new Date(b.updatedAt || b.createdAt || 0).getTime();
+      return db - da;
+    });
+
+    if (filterCC !== "All") {
+      rows = rows.filter((r) => normKey(r.callCenter) === normKey(filterCC));
+    }
+
+    const q = normKey(search);
+    if (q) {
+      rows = rows.filter((r) => {
+        const hay = [
+          r.name,
+          r.email,
+          r.callCenter,
+          r.comment,
+          String(r.stars ?? ""),
+        ]
+          .map((x) => String(x ?? ""))
+          .join(" ")
+          .toLowerCase();
+        return hay.includes(q);
+      });
+    }
+
+    return rows;
+  }, [reviews, filterCC, search]);
 
   return (
     <div className="rv-wrap">
@@ -200,19 +210,25 @@ export default function ReviewsPage({ apiBase }) {
           <div>
             <div className="rv-title">Reviews</div>
             <div className="rv-sub">
-              Rate the tool and your experience (1–5 stars). You can edit anytime using the same Call Center + Email.
-            </div>
-            <div className="rv-sub" style={{ opacity: 0.75, marginTop: 6 }}>
-              API Base: <span style={{ fontWeight: 700 }}>{base}</span>
+              Rate the tool and your experience (1–5 stars). You can edit anytime using the same
+              Call Center + Email.
             </div>
           </div>
 
           <div className="rv-tabs">
-            <button className={`rv-tab ${tab === "write" ? "is-active" : ""}`} type="button" onClick={() => setTab("write")}>
-              Write / Edit
-            </button>
-            <button className={`rv-tab ${tab === "view" ? "is-active" : ""}`} type="button" onClick={() => setTab("view")}>
+            <button
+              className={`rv-tab ${tab === "view" ? "is-active" : ""}`}
+              type="button"
+              onClick={() => setTab("view")}
+            >
               View Reviews
+            </button>
+            <button
+              className={`rv-tab ${tab === "write" ? "is-active" : ""}`}
+              type="button"
+              onClick={() => setTab("write")}
+            >
+              Write / Edit
             </button>
           </div>
         </div>
@@ -220,20 +236,16 @@ export default function ReviewsPage({ apiBase }) {
         {error ? <div className="rv-alert is-err">{error}</div> : null}
         {okMsg ? <div className="rv-alert is-ok">{okMsg}</div> : null}
 
-        <div className="rv-row" style={{ gap: 10, marginBottom: 14 }}>
-          <button className="rv-btn rv-btnGhost" type="button" onClick={ping} disabled={loading}>
-            {loading ? "Pinging…" : "Ping"}
-          </button>
-          <button className="rv-btn rv-btnGhost" type="button" onClick={loadAll} disabled={loading}>
-            {loading ? "Refreshing…" : "Refresh"}
-          </button>
-        </div>
-
         {tab === "write" ? (
           <div className="rv-grid">
             <div className="rv-field">
               <label className="rv-label">Call Center</label>
-              <select className="rv-input" value={callCenter} onChange={(e) => setCallCenter(e.target.value)} disabled={loading}>
+              <select
+                className="rv-input"
+                value={callCenter}
+                onChange={(e) => setCallCenter(e.target.value)}
+                disabled={loading}
+              >
                 {CALL_CENTERS.map((cc) => (
                   <option key={cc} value={cc}>
                     {cc}
@@ -244,7 +256,13 @@ export default function ReviewsPage({ apiBase }) {
 
             <div className="rv-field">
               <label className="rv-label">Name</label>
-              <input className="rv-input" value={name} onChange={(e) => setName(e.target.value)} placeholder="Your name" disabled={loading} />
+              <input
+                className="rv-input"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="Your name"
+                disabled={loading}
+              />
             </div>
 
             <div className="rv-field">
@@ -257,7 +275,12 @@ export default function ReviewsPage({ apiBase }) {
                 disabled={loading}
               />
               <div className="rv-row">
-                <button className="rv-btn rv-btnGhost" type="button" onClick={findMine} disabled={loading || !email.trim()}>
+                <button
+                  className="rv-btn rv-btnGhost"
+                  type="button"
+                  onClick={findMine}
+                  disabled={loading || !email.trim()}
+                >
                   Find My Review
                 </button>
                 <div className="rv-hint">(Loads your existing review if it exists.)</div>
@@ -335,36 +358,66 @@ export default function ReviewsPage({ apiBase }) {
 
             <div className="rv-listHead">
               <div className="rv-listTitle">Latest</div>
-              <button className="rv-btn rv-btnGhost" type="button" onClick={loadAll} disabled={loading}>
-                {loading ? "Refreshing…" : "Refresh"}
-              </button>
+              <div className="rv-listTools">
+                <select
+                  className="rv-input rv-inputSm"
+                  value={filterCC}
+                  onChange={(e) => setFilterCC(e.target.value)}
+                  disabled={loading}
+                >
+                  <option value="All">All Call Centers</option>
+                  {CALL_CENTERS.map((cc) => (
+                    <option key={cc} value={cc}>
+                      {cc}
+                    </option>
+                  ))}
+                </select>
+
+                <input
+                  className="rv-input rv-inputSm"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  placeholder="Search name, email, comment…"
+                  disabled={loading}
+                />
+
+                <button className="rv-btn rv-btnGhost" type="button" onClick={loadAll} disabled={loading}>
+                  {loading ? "Refreshing…" : "Refresh"}
+                </button>
+              </div>
             </div>
 
             <div className="rv-list">
-              {Array.isArray(reviews) && reviews.length ? (
-                reviews.map((r) => {
-                  const key = r?.reviewId || `${safeStr(r?.email)}-${safeStr(r?.callCenter)}-${safeStr(r?.updatedAt)}`;
-                  const updatedAt = r?.updatedAt ? new Date(r.updatedAt).toLocaleString() : "";
-                  return (
-                    <div key={key} className="rv-item">
-                      <div className="rv-itemTop">
-                        <div className="rv-itemLeft">
-                          <div className="rv-itemName">{safeStr(r?.name) || "(no name)"}</div>
-                          <div className="rv-itemMeta">
-                            <span className="rv-pill">{safeStr(r?.callCenter) || "Unknown"}</span>
-                            <span className="rv-dot">•</span>
-                            <span className="rv-date">{updatedAt}</span>
-                          </div>
+              {filtered.length ? (
+                filtered.map((r) => (
+                  <div
+                    key={r.reviewId || `${r.email}-${r.callCenter}-${r.updatedAt || r.createdAt}`}
+                    className="rv-item"
+                  >
+                    <div className="rv-itemTop">
+                      <div className="rv-itemLeft">
+                        <div className="rv-itemName">{r.name || "(no name)"}</div>
+                        <div className="rv-itemMeta">
+                          <span className="rv-pill">{r.callCenter || "Unknown"}</span>
+                          <span className="rv-dot">•</span>
+                          <span className="rv-date">
+                            {r.updatedAt ? new Date(r.updatedAt).toLocaleString() : ""}
+                          </span>
                         </div>
-                        <StarRating value={Number(r?.stars) || 0} readOnly />
+                        <div className="rv-itemEmail">{r.email || ""}</div>
                       </div>
-                      {r?.comment ? <div className="rv-itemComment">{safeStr(r.comment)}</div> : null}
+                      <StarRating value={Number(r.stars) || 0} readOnly />
                     </div>
-                  );
-                })
+                    {r.comment ? <div className="rv-itemComment">{r.comment}</div> : null}
+                  </div>
+                ))
               ) : (
                 <div className="rv-empty">No reviews yet.</div>
               )}
+            </div>
+
+            <div className="rv-footNote">
+              API: <span className="rv-mono">{BASE}</span>
             </div>
           </div>
         )}
