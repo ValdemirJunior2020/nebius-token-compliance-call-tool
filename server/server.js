@@ -1,4 +1,4 @@
-// server/server.js - Anthropic (Claude) + Excel + JSON docs + FIXED CORS + timeoutPromise + retrieval context + output guard
+// server/server.js - Anthropic (Claude) + Excel + JSON docs + FIXED CORS + timeoutPromise
 import express from "express";
 import dotenv from "dotenv";
 import path from "path";
@@ -69,6 +69,7 @@ function isNetlifySubdomain(origin) {
 
 app.use((req, res, next) => {
   const origin = req.headers.origin;
+
   if (!origin) return next();
 
   const cleanOrigin = String(origin).replace(/\/+$/, "");
@@ -105,6 +106,7 @@ const SHEETS_SHEET_ID = process.env.GOOGLE_SHEETS_SPREADSHEET_ID || "";
 const SHEETS_TAB = process.env.GOOGLE_SHEETS_TAB_NAME || "";
 
 function sheetsKeyNormalized() {
+  // Render often stores as multiline OR with \n - normalize both
   const k = String(SHEETS_KEY_RAW || "").trim();
   if (!k) return "";
   return k.includes("\\n") ? k.replace(/\\n/g, "\n") : k;
@@ -130,6 +132,7 @@ function safeSheetsStatusLog() {
 }
 
 // -------------------- Reviews (Google Sheets) --------------------
+// Stores: call center, name, email, stars(1-5), comment + timestamps
 app.get("/api/reviews", async (req, res) => {
   try {
     const email = String(req.query.email || "").trim();
@@ -161,6 +164,7 @@ app.post("/api/reviews/upsert", async (req, res) => {
   }
 });
 
+// ✅ NEW: Reviews ping endpoint (you tried /api/reviews/ping)
 app.get("/api/reviews/ping", (req, res) => {
   res.json({
     ok: true,
@@ -190,9 +194,15 @@ app.get("/health", (req, res) => {
 });
 
 // -------------------- docs loading --------------------
+
+// ✅ Prefer local repo assets first (Render + local dev)
+// Repo paths:
+// - client/public/Assets/*  (source of truth)
+// - server/data/*           (fallback)
 const LOCAL_ASSETS_DIR = path.join(__dirname, "../client/public/Assets");
 const LOCAL_SERVER_DATA_DIR = path.join(__dirname, "data");
 
+// ✅ Netlify/Frontend base (only used as final fallback)
 function getDocsBase() {
   return (
     process.env.DOCS_BASE_URL ||
@@ -210,6 +220,7 @@ function existsFile(p) {
   }
 }
 
+// ✅ Resolve doc path locally first (Render-friendly)
 function resolveLocalDocPath(fileName) {
   const p1 = path.join(LOCAL_ASSETS_DIR, fileName);
   if (existsFile(p1)) return p1;
@@ -221,6 +232,7 @@ function resolveLocalDocPath(fileName) {
 }
 
 async function fetchExcelDocument(docName, fileName) {
+  // ✅ 1) LOCAL FIRST
   const localPath = resolveLocalDocPath(fileName);
   if (localPath) {
     log(`Loading ${docName} from local: ${localPath}`);
@@ -228,6 +240,7 @@ async function fetchExcelDocument(docName, fileName) {
     return parseWorkbook(workbook, docName);
   }
 
+  // ✅ 2) REMOTE FALLBACK (Netlify/Frontend)
   const docsBase = getDocsBase();
   const netlifyUrl = `${String(docsBase).replace(/\/+$/, "")}/Assets/${encodeURIComponent(
     fileName
@@ -243,6 +256,7 @@ async function fetchExcelDocument(docName, fileName) {
 }
 
 async function fetchJsonDocument(docName, fileName) {
+  // ✅ 1) LOCAL FIRST
   const localPath = resolveLocalDocPath(fileName);
   if (localPath) {
     log(`Loading ${docName} from local: ${localPath}`);
@@ -252,6 +266,7 @@ async function fetchJsonDocument(docName, fileName) {
     return json;
   }
 
+  // ✅ 2) REMOTE FALLBACK (Netlify/Frontend)
   const docsBase = getDocsBase();
   const netlifyUrl = `${String(docsBase).replace(/\/+$/, "")}/Assets/${encodeURIComponent(
     fileName
@@ -286,12 +301,7 @@ async function loadDocuments(force = false) {
     { key: "qaVoice", file: "qa-voice.xlsx", name: "QA Voice", kind: "excel" },
     { key: "qaGroup", file: "qa-group.xlsx", name: "QA Groups", kind: "excel" },
     { key: "matrix", file: "Service Matrix's 2026.xlsx", name: "Service Matrix", kind: "excel" },
-    {
-      key: "trainingGuide",
-      file: "hotelplanner_training_guide.json",
-      name: "Training Guide",
-      kind: "json",
-    },
+    { key: "trainingGuide", file: "hotelplanner_training_guide.json", name: "Training Guide", kind: "json" },
     { key: "rppGuide", file: "rpp_protection_guide.json", name: "RPP Protection Guide", kind: "json" },
   ];
 
@@ -318,190 +328,34 @@ async function loadDocuments(force = false) {
   console.log("✅ Documents load finished.");
 }
 
-// -------------------- retrieval context (IMPORTANT) --------------------
-const STOPWORDS = new Set([
-  "a","an","the","and","or","but","if","then","else","to","of","for","with","on","in","at","by",
-  "is","are","was","were","be","been","being","it","this","that","these","those","i","you","we","they",
-  "can","could","should","would","do","does","did","not","no","yes","able","allowed","give","share","tell",
-  "hotel","guest","guests","phone","number" // keep these out as "generic", your docs already contain them a lot
-]);
+function buildContext(docsSelection) {
+  const parts = [];
+  const MAX_CHARS = 6000;
 
-function colToA1(colIdx) {
-  let n = colIdx + 1;
-  let s = "";
-  while (n > 0) {
-    const r = (n - 1) % 26;
-    s = String.fromCharCode(65 + r) + s;
-    n = Math.floor((n - 1) / 26);
-  }
-  return s;
-}
-
-function tokenize(q) {
-  return String(q || "")
-    .toLowerCase()
-    .replace(/[^a-z0-9\s]/g, " ")
-    .split(/\s+/)
-    .map((t) => t.trim())
-    .filter((t) => t.length >= 3)
-    .filter((t) => !STOPWORDS.has(t));
-}
-
-function makeNeedleRegex(tokens) {
-  if (!tokens.length) return null;
-  const escaped = tokens.map((t) => t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
-  return new RegExp(`\\b(${escaped.join("|")})\\b`, "i");
-}
-
-function searchExcelDoc(docKey, docName, docObj, regex) {
-  const hits = [];
-  if (!docObj || !regex) return hits;
-
-  for (const [sheetName, rows] of Object.entries(docObj)) {
-    if (!Array.isArray(rows)) continue;
-
-    for (let r = 0; r < rows.length; r++) {
-      const row = rows[r];
-      if (!Array.isArray(row)) continue;
-
-      // fast row check
-      const rowText = row.map((c) => String(c ?? "")).join(" | ");
-      if (!regex.test(rowText)) continue;
-
-      // capture cell-level refs for citations
-      for (let c = 0; c < row.length; c++) {
-        const cell = String(row[c] ?? "");
-        if (!cell) continue;
-        if (regex.test(cell)) {
-          const a1 = `${colToA1(c)}${r + 1}`;
-          hits.push({
-            doc: docName,
-            sheet: sheetName,
-            row: r + 1,
-            cell: a1,
-            text: rowText.slice(0, 400),
-          });
-          break; // one hit per row is enough
-        }
-      }
-    }
-  }
-  return hits;
-}
-
-function searchJsonDoc(docName, jsonObj, regex) {
-  const hits = [];
-  if (!jsonObj || !regex) return hits;
-
-  const stack = [{ path: "$", val: jsonObj }];
-  while (stack.length) {
-    const { path: p, val } = stack.pop();
-    if (val == null) continue;
-
-    if (typeof val === "string") {
-      if (regex.test(val)) {
-        hits.push({ doc: docName, sheet: "json", row: "-", cell: p, text: val.slice(0, 400) });
-      }
-      continue;
-    }
-
-    if (Array.isArray(val)) {
-      for (let i = 0; i < val.length; i++) stack.push({ path: `${p}[${i}]`, val: val[i] });
-      continue;
-    }
-
-    if (typeof val === "object") {
-      for (const [k, v] of Object.entries(val)) stack.push({ path: `${p}.${k}`, val: v });
-    }
-  }
-
-  return hits;
-}
-
-function buildContext(question, docsSelection) {
-  const tokens = tokenize(question);
-  const regex = makeNeedleRegex(tokens);
-
+  // ✅ Matrix ALWAYS included
   const wantMatrix = true;
-  const hits = [];
 
   if (docsSelection.qaVoice && DOCUMENT_CACHE.qaVoice) {
-    hits.push(...searchExcelDoc("qaVoice", "QA Voice", DOCUMENT_CACHE.qaVoice, regex));
+    parts.push(`QA VOICE RUBRIC:\n${JSON.stringify(DOCUMENT_CACHE.qaVoice).slice(0, MAX_CHARS)}`);
   }
   if (docsSelection.qaGroup && DOCUMENT_CACHE.qaGroup) {
-    hits.push(...searchExcelDoc("qaGroup", "QA Groups", DOCUMENT_CACHE.qaGroup, regex));
+    parts.push(`QA GROUPS RUBRIC:\n${JSON.stringify(DOCUMENT_CACHE.qaGroup).slice(0, MAX_CHARS)}`);
   }
   if (wantMatrix && DOCUMENT_CACHE.matrix) {
-    hits.push(...searchExcelDoc("matrix", "Service Matrix", DOCUMENT_CACHE.matrix, regex));
+    parts.push(`SERVICE MATRIX 2026:\n${JSON.stringify(DOCUMENT_CACHE.matrix).slice(0, MAX_CHARS)}`);
   }
   if (docsSelection.trainingGuide && DOCUMENT_CACHE.trainingGuide) {
-    hits.push(...searchJsonDoc("Training Guide", DOCUMENT_CACHE.trainingGuide, regex));
+    parts.push(
+      `TRAINING GUIDE (JSON):\n${JSON.stringify(DOCUMENT_CACHE.trainingGuide).slice(0, MAX_CHARS)}`
+    );
   }
   if (docsSelection.rppGuide && DOCUMENT_CACHE.rppGuide) {
-    hits.push(...searchJsonDoc("RPP Protection Guide", DOCUMENT_CACHE.rppGuide, regex));
+    parts.push(
+      `RPP PROTECTION GUIDE (JSON):\n${JSON.stringify(DOCUMENT_CACHE.rppGuide).slice(0, MAX_CHARS)}`
+    );
   }
 
-  // If no keyword hits, still give model a safe instruction: no citations => NO CITATION AVAILABLE
-  if (!hits.length) return "NO MATCHES FOUND IN DOC EXCERPTS";
-
-  const MAX_LINES = 50;
-  const selected = hits.slice(0, MAX_LINES);
-
-  return selected
-    .map(
-      (h) =>
-        `[Doc: ${h.doc} | Sheet/Section: ${h.sheet} | Row/Cell: ${h.cell}] ${h.text}`
-    )
-    .join("\n");
-}
-
-// -------------------- output guard (IMPORTANT) --------------------
-function hasCitationsBlock(answer) {
-  const a = String(answer || "");
-  if (!/Citations:\s*/i.test(a)) return false;
-  const citationLines = a
-    .split("\n")
-    .map((l) => l.trim())
-    .filter((l) => l.startsWith("- [Doc:"));
-  return citationLines.length > 0;
-}
-
-function normalizeComplianceAnswer(answer) {
-  const a = String(answer || "").trim();
-  if (!a) return "NO CITATION AVAILABLE";
-  if (/NO CITATION AVAILABLE/i.test(a)) return "NO CITATION AVAILABLE";
-  if (!hasCitationsBlock(a)) return "NO CITATION AVAILABLE";
-
-  // Extra hard stop for the exact risk you hit: "yes you can give the phone number" with weak citations
-  // (We can't verify citation content here, so we enforce: any mention of hotel phone must be conservatively blocked unless model already answered safely)
-  const mentionsHotelPhone =
-    /\b(phone|telephone|tel\.?|direct line|call the hotel number)\b/i.test(a) &&
-    /\bguest\b/i.test(a);
-
-  const soundsPermissive =
-    /\b(yes|allowed|can|okay|ok to|you may|permitted)\b/i.test(a) &&
-    /\b(give|share|provide|tell)\b/i.test(a);
-
-  if (mentionsHotelPhone && soundsPermissive) {
-    // Force safe fallback; model must return with explicit permission citations or stop.
-    return "NO CITATION AVAILABLE";
-  }
-
-  return a;
-}
-
-async function ensureDocsReady() {
-  if (Object.keys(DOCUMENT_CACHE).length > 0) return;
-
-  if (!DOCS_LOADING) {
-    await loadDocuments().catch((e) => errlog("docs load error:", e?.message || e));
-  }
-
-  const started = Date.now();
-  while (DOCS_LOADING) {
-    await new Promise((r) => setTimeout(r, 150));
-    if (Date.now() - started > 12000) break;
-  }
+  return parts.join("\n\n---\n\n") || "NOT FOUND IN DOCS";
 }
 
 // -------------------- providers --------------------
@@ -588,8 +442,10 @@ async function handleAsk(req, res) {
   log(`[${reqId}] Question: ${String(question || "").slice(0, 120)}...`);
   if (!question) return res.status(400).json({ ok: false, error: "Missing question" });
 
-  // ✅ Make sure docs are actually loaded before building context
-  await ensureDocsReady();
+  // ✅ If docs aren't loaded yet, kick a load and proceed when ready
+  if (Object.keys(DOCUMENT_CACHE).length === 0 && !DOCS_LOADING) {
+    loadDocuments().catch((e) => errlog("docs load error:", e?.message || e));
+  }
 
   if (mode === "local") {
     return res.json({
@@ -613,8 +469,7 @@ async function handleAsk(req, res) {
   }
 
   try {
-    // ✅ Retrieval-style context with explicit row/cell references (easier + safer citations)
-    const context = buildContext(question, docs);
+    const context = buildContext(docs);
 
     const systemPrompt = `
 You are "QA Master" — the strictest, smartest HotelPlanner Call Center Quality & Compliance Analyst.
@@ -676,6 +531,7 @@ QUALITY CHECK
 Now answer the user question using the rules above.
 `.trim();
 
+
     let apiPromise;
     switch (AI_PROVIDER) {
       case "anthropic":
@@ -695,8 +551,7 @@ Now answer the user question using the rules above.
       setTimeout(() => reject(Object.assign(new Error("Request timeout"), { status: 504 })), 55000)
     );
 
-    const rawAnswer = await Promise.race([apiPromise, timeoutPromise]);
-    const answer = normalizeComplianceAnswer(rawAnswer);
+    const answer = await Promise.race([apiPromise, timeoutPromise]);
 
     log(`[${reqId}] Success (${AI_PROVIDER})`);
     return res.json({
@@ -704,11 +559,7 @@ Now answer the user question using the rules above.
       answer,
       provider: AI_PROVIDER,
       model:
-        AI_PROVIDER === "nebius"
-          ? NEBIUS_MODEL
-          : AI_PROVIDER === "kimi"
-          ? KIMI_MODEL
-          : ANTHROPIC_MODEL,
+        AI_PROVIDER === "nebius" ? NEBIUS_MODEL : AI_PROVIDER === "kimi" ? KIMI_MODEL : ANTHROPIC_MODEL,
     });
   } catch (error) {
     errlog(`[${reqId}] Error:`, error?.message || error);
@@ -753,6 +604,7 @@ app.listen(PORT, () => {
   console.log(`🔑 Anthropic: ${ANTHROPIC_API_KEY ? "✅" : "❌"}`);
   safeSheetsStatusLog();
 
+  // ✅ Background preload (non-blocking)
   console.log("⏳ Loading documents (background)...");
   loadDocuments().catch((e) => errlog("docs load error:", e?.message || e));
 });
