@@ -1,4 +1,4 @@
-// server/server.js - Anthropic (Claude) + Excel + JSON docs + FIXED CORS + timeoutPromise
+// server/server.js - Anthropic (Claude) + Google Sheets Matrix/QA + JSON docs + FIXED CORS + timeoutPromise
 import express from "express";
 import dotenv from "dotenv";
 import path from "path";
@@ -44,12 +44,18 @@ const MATRIX_TABS = String(process.env.MATRIX_TABS || "")
   .map((s) => s.trim())
   .filter(Boolean);
 
+// ✅ QA tabs inside the SAME spreadsheet (your new tabs)
+const QA_VOICE_TAB = process.env.QA_VOICE_TAB || "qa-voice";
+const QA_GROUPS_TAB = process.env.QA_GROUPS_TAB || "qa-groups";
+
 log("Boot settings:", {
   PORT,
   DEBUG,
   AI_PROVIDER,
   MATRIX_SHEET_ID,
   MATRIX_TABS: MATRIX_TABS.length ? MATRIX_TABS : "(all tabs)",
+  QA_VOICE_TAB,
+  QA_GROUPS_TAB,
 });
 
 // -------------------- CORS (FIXED) --------------------
@@ -150,6 +156,7 @@ function safeSheetsStatusLog() {
       MATRIX_TABS.length ? MATRIX_TABS.join(", ") : "(all tabs)"
     }`
   );
+  console.log(`🧪 QA tabs in Matrix Sheet: voice="${QA_VOICE_TAB}" groups="${QA_GROUPS_TAB}"`);
 }
 
 // -------------------- Reviews (Google Sheets) --------------------
@@ -196,12 +203,15 @@ app.get("/api/reviews/ping", (req, res) => {
   });
 });
 
-// ✅ NEW: Matrix ping endpoint (helps confirm reads quickly)
+// ✅ Matrix ping endpoint (helps confirm reads quickly)
 app.get("/api/matrix/ping", (req, res) => {
   const matrix = DOCUMENT_CACHE.matrix;
   const tabCount = matrix && typeof matrix === "object" ? Object.keys(matrix).length : 0;
   const firstTab = tabCount ? Object.keys(matrix)[0] : null;
   const firstTabRows = firstTab && Array.isArray(matrix[firstTab]) ? matrix[firstTab].length : 0;
+
+  const qaVoice = DOCUMENT_CACHE.qaVoice;
+  const qaGroup = DOCUMENT_CACHE.qaGroup;
 
   res.json({
     ok: true,
@@ -210,6 +220,14 @@ app.get("/api/matrix/ping", (req, res) => {
     tabsConfigured: MATRIX_TABS.length ? MATRIX_TABS : null,
     cachedTabs: tabCount,
     sample: firstTab ? { tab: firstTab, rows: firstTabRows } : null,
+    qaTabs: {
+      voiceTab: QA_VOICE_TAB,
+      groupsTab: QA_GROUPS_TAB,
+      qaVoiceLoaded: Array.isArray(qaVoice),
+      qaVoiceRows: Array.isArray(qaVoice) ? qaVoice.length : 0,
+      qaGroupLoaded: Array.isArray(qaGroup),
+      qaGroupRows: Array.isArray(qaGroup) ? qaGroup.length : 0,
+    },
     ts: new Date().toISOString(),
   });
 });
@@ -233,6 +251,13 @@ app.get("/health", (req, res) => {
       tabsConfigured: MATRIX_TABS.length ? MATRIX_TABS : null,
       cachedTabs: matrixTabs.length,
       cachedTabNamesPreview: matrixTabs.slice(0, 15),
+    },
+    qa: {
+      source: "google_sheets_tabs_in_matrix_sheet",
+      qaVoiceTab: QA_VOICE_TAB,
+      qaGroupsTab: QA_GROUPS_TAB,
+      qaVoiceRows: Array.isArray(DOCUMENT_CACHE.qaVoice) ? DOCUMENT_CACHE.qaVoice.length : 0,
+      qaGroupRows: Array.isArray(DOCUMENT_CACHE.qaGroup) ? DOCUMENT_CACHE.qaGroup.length : 0,
     },
     docs: {
       cached: Object.keys(DOCUMENT_CACHE),
@@ -275,6 +300,7 @@ function resolveLocalDocPath(fileName) {
   return null;
 }
 
+// NOTE: kept for your "resources downloads" + fallback docs if needed later
 async function fetchExcelDocument(docName, fileName) {
   const localPath = resolveLocalDocPath(fileName);
   if (localPath) {
@@ -347,6 +373,24 @@ function matrixStats(matrixDoc) {
   }
 }
 
+function firstNonEmptyRow(rows) {
+  if (!Array.isArray(rows)) return -1;
+  for (let i = 0; i < rows.length; i++) {
+    const row = rows[i];
+    if (!Array.isArray(row)) continue;
+    const has = row.some((v) => String(v ?? "").trim() !== "");
+    if (has) return i;
+  }
+  return -1;
+}
+
+function colsGuess(rows) {
+  if (!Array.isArray(rows)) return 0;
+  let max = 0;
+  for (const r of rows) if (Array.isArray(r)) max = Math.max(max, r.length);
+  return max;
+}
+
 async function loadDocuments(force = false) {
   if (DOCS_LOADING) {
     log("📚 loadDocuments skipped: already loading");
@@ -360,7 +404,7 @@ async function loadDocuments(force = false) {
   DOCS_LOADING = true;
   console.log("⏳ loadDocuments started...", { force, ts: new Date().toISOString() });
 
-  // ✅ 1) Load Service Matrix from GOOGLE SHEETS (ALWAYS)
+  // ✅ 1) Load Service Matrix (+ QA tabs) from GOOGLE SHEETS (ALWAYS)
   {
     const t0 = Date.now();
     try {
@@ -376,6 +420,41 @@ async function loadDocuments(force = false) {
 
       DOCUMENT_CACHE.matrix = matrix;
 
+      // ✅ Map Google Sheet QA tabs into same keys used by UI toggles (qaVoice / qaGroup)
+      const qaVoiceRows = matrix?.[QA_VOICE_TAB];
+      const qaGroupsRows = matrix?.[QA_GROUPS_TAB];
+
+      if (Array.isArray(qaVoiceRows) && qaVoiceRows.length) {
+        DOCUMENT_CACHE.qaVoice = qaVoiceRows;
+        console.log("✅ [QA VOICE] loaded from Google Sheets tab", {
+          tab: QA_VOICE_TAB,
+          rows: qaVoiceRows.length,
+          cols: colsGuess(qaVoiceRows),
+          firstNonEmptyRow: firstNonEmptyRow(qaVoiceRows),
+        });
+      } else {
+        console.warn("⚠️ [QA VOICE] tab not found or empty in matrix", {
+          expectedTab: QA_VOICE_TAB,
+          availableTabs: Object.keys(matrix || {}).slice(0, 50),
+        });
+      }
+
+      if (Array.isArray(qaGroupsRows) && qaGroupsRows.length) {
+        // If the first row is empty (common), we still keep rows but log the first usable row.
+        DOCUMENT_CACHE.qaGroup = qaGroupsRows;
+        console.log("✅ [QA GROUPS] loaded from Google Sheets tab", {
+          tab: QA_GROUPS_TAB,
+          rows: qaGroupsRows.length,
+          cols: colsGuess(qaGroupsRows),
+          firstNonEmptyRow: firstNonEmptyRow(qaGroupsRows),
+        });
+      } else {
+        console.warn("⚠️ [QA GROUPS] tab not found or empty in matrix", {
+          expectedTab: QA_GROUPS_TAB,
+          availableTabs: Object.keys(matrix || {}).slice(0, 50),
+        });
+      }
+
       const stats = matrixStats(matrix);
       console.log("✅ Service Matrix loaded (Google Sheets)", {
         ms: Date.now() - t0,
@@ -387,17 +466,21 @@ async function loadDocuments(force = false) {
     }
   }
 
-  // ✅ 2) Load other docs (Excel/JSON) from Assets/local/remote
+  // ✅ 2) Load other docs (ONLY JSON here)
+  // IMPORTANT: We STOP loading qa-voice.xlsx + qa-group.xlsx to avoid overriding Google Sheets QA tabs.
   const docs = [
-    { key: "qaVoice", file: "qa-voice.xlsx", name: "QA Voice", kind: "excel" },
-    { key: "qaGroup", file: "qa-group.xlsx", name: "QA Groups", kind: "excel" },
     {
       key: "trainingGuide",
       file: "hotelplanner_training_guide.json",
       name: "Training Guide",
       kind: "json",
     },
-    { key: "rppGuide", file: "rpp_protection_guide.json", name: "RPP Protection Guide", kind: "json" },
+    {
+      key: "rppGuide",
+      file: "rpp_protection_guide.json",
+      name: "RPP Protection Guide",
+      kind: "json",
+    },
   ];
 
   const summary = [];
@@ -536,7 +619,6 @@ function extractMatrixSteps(rows, headerIndex, rowIndex) {
     const yn = normalizeYesNo(v);
     const ynNorm = norm(yn);
 
-    // Only show when it is a real "Yes" OR some non-empty meaningful value (like a channel name)
     if (!yn || isNoValue(yn)) continue;
     if (ynNorm === "no" || ynNorm === "n") continue;
 
@@ -808,7 +890,10 @@ async function handleAsk(req, res) {
 
     const direct = findDirectMatrixAnswer(DOCUMENT_CACHE.matrix, question);
 
-    console.log("🔎 Matrix lookup result:", direct ? { score: direct.score, sheet: direct.sheetName, row: direct.rowIndex + 1 } : null);
+    console.log(
+      "🔎 Matrix lookup result:",
+      direct ? { score: direct.score, sheet: direct.sheetName, row: direct.rowIndex + 1 } : null
+    );
 
     if (direct && direct.score >= 70) {
       console.log("✅ Matrix DIRECT HIT - returning without AI", {
