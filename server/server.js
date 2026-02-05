@@ -301,7 +301,12 @@ async function loadDocuments(force = false) {
     { key: "qaVoice", file: "qa-voice.xlsx", name: "QA Voice", kind: "excel" },
     { key: "qaGroup", file: "qa-group.xlsx", name: "QA Groups", kind: "excel" },
     { key: "matrix", file: "Service Matrix's 2026.xlsx", name: "Service Matrix", kind: "excel" },
-    { key: "trainingGuide", file: "hotelplanner_training_guide.json", name: "Training Guide", kind: "json" },
+    {
+      key: "trainingGuide",
+      file: "hotelplanner_training_guide.json",
+      name: "Training Guide",
+      kind: "json",
+    },
     { key: "rppGuide", file: "rpp_protection_guide.json", name: "RPP Protection Guide", kind: "json" },
   ];
 
@@ -356,6 +361,213 @@ function buildContext(docsSelection) {
   }
 
   return parts.join("\n\n---\n\n") || "NOT FOUND IN DOCS";
+}
+
+// ✅✅✅ MATRIX: direct lookup (NO AI) for exact agent steps/scripts from Service Matrix
+// Goal: if the Matrix has a row for the concern, return the Matrix instructions/steps verbatim.
+
+function norm(s) {
+  return String(s ?? "")
+    .toLowerCase()
+    .trim()
+    .replace(/\s+/g, " ")
+    .replace(/[^\p{L}\p{N}\s]/gu, "");
+}
+
+function isNoValue(v) {
+  const s = norm(v);
+  if (s === "y" || s === "yes" || s === "true" || s === "1") return "Yes";
+  if (s === "n" || s === "no" || s === "false" || s === "0") return "No";
+  return String(v ?? "").trim();
+}
+
+function detectHeaderRowIndex(rows) {
+  // Look for a row that contains "instructions" (common in your Matrix header)
+  const MAX_SCAN = Math.min(40, rows.length);
+  for (let r = 0; r < MAX_SCAN; r++) {
+    const row = rows[r];
+    if (!Array.isArray(row)) continue;
+    const joined = row.map((x) => norm(x)).join(" | ");
+    if (joined.includes("instructions")) return r;
+  }
+  return -1;
+}
+
+function buildHeaderMap(headerRow) {
+  // Map normalized header -> column index
+  const map = new Map();
+  if (!Array.isArray(headerRow)) return map;
+  for (let i = 0; i < headerRow.length; i++) {
+    const h = norm(headerRow[i]);
+    if (!h) continue;
+    // keep first occurrence only
+    if (!map.has(h)) map.set(h, i);
+  }
+  return map;
+}
+
+function extractMatrixSteps(rows, headerIndex, rowIndex) {
+  const row = rows[rowIndex];
+  if (!Array.isArray(row)) return null;
+
+  const headerRow = headerIndex >= 0 ? rows[headerIndex] : null;
+  const headerMap = buildHeaderMap(headerRow);
+
+  // Prefer these columns if they exist (Voice Matrix has them)
+  const preferredHeaders = [
+    "instructions",
+    "slack",
+    "refund queue",
+    "create a ticket",
+    "supervisor",
+  ];
+
+  const parts = [];
+  let instructionsRaw = null;
+
+  // If we found recognizable headers, pull those columns in that order.
+  const hasKnownHeaders = preferredHeaders.some((h) => headerMap.has(h));
+  if (hasKnownHeaders) {
+    for (const h of preferredHeaders) {
+      if (!headerMap.has(h)) continue;
+      const idx = headerMap.get(h);
+      const v = row[idx];
+      if (isNoValue(v)) continue;
+
+      const label =
+        h === "instructions"
+          ? "Instructions"
+          : h === "refund queue"
+          ? "Refund Queue"
+          : h === "create a ticket"
+          ? "Create a Ticket"
+          : h === "supervisor"
+          ? "Supervisor"
+          : "Slack";
+
+      if (h === "instructions") instructionsRaw = String(v).trim();
+      parts.push(`${label}: ${normalizeYesNo(v)}`);
+    }
+  } else {
+    // Fallback: return the longest meaningful text cell (usually the instructions cell)
+    let best = null;
+    for (let i = 0; i < row.length; i++) {
+      const v = String(row[i] ?? "").trim();
+      if (!v) continue;
+      if (v.length < 12) continue;
+      if (isNoValue(v)) continue;
+      if (!best || v.length > best.length) best = v;
+    }
+    if (best) parts.push(best);
+  }
+
+  if (!parts.length) return null;
+  // If only instructions are present, return the cell verbatim (no extra label)
+  if (instructionsRaw && parts.length === 1) return instructionsRaw;
+  return parts.join("\n\n");
+}
+
+// Small alias expansion for common phrasing (fast + safe; avoids heavy fuzzy on huge sheets)
+function expandQueryVariants(qNorm) {
+  const variants = new Set([qNorm]);
+
+  const add = (s) => s && variants.add(norm(s));
+
+  // Common concern synonyms
+  if (
+    qNorm.includes("double charged") ||
+    qNorm.includes("charged twice") ||
+    qNorm.includes("double charge")
+  ) {
+    add("double charged");
+    add("charged twice");
+    add("duplicate charge");
+    add("double charge");
+  }
+
+  if (qNorm.includes("refund") && qNorm.includes("status")) {
+    add("refund status");
+    add("status of refund");
+  }
+
+  return Array.from(variants).filter(Boolean);
+}
+
+function scoreMatch(cellNorm, qNorm) {
+  if (!cellNorm || !qNorm) return 0;
+  if (cellNorm === qNorm) return 100;
+  if (cellNorm.includes(qNorm) || qNorm.includes(cellNorm)) return 80;
+
+  const qTokens = qNorm.split(" ").filter(Boolean);
+  const cTokens = cellNorm.split(" ").filter(Boolean);
+  if (!qTokens.length || !cTokens.length) return 0;
+
+  const cSet = new Set(cTokens);
+  let overlap = 0;
+  for (const t of qTokens) if (cSet.has(t)) overlap++;
+
+  // Require at least 2 overlapping tokens for multi-word queries,
+  // but allow 1 overlap for short queries (<=2 tokens)
+  const minOverlap = qTokens.length <= 2 ? 1 : 2;
+  if (overlap < minOverlap) return 0;
+
+  // scale score with overlap
+  return Math.min(75, 45 + overlap * 10);
+}
+
+function findDirectMatrixAnswer(matrixDoc, userQuestion) {
+  if (!matrixDoc || typeof matrixDoc !== 'object') return null;
+
+  const q0 = norm(userQuestion);
+  if (!q0) return null;
+
+  const queries = expandQueryVariants(q0);
+
+  let bestHit = null;
+
+  for (const [sheetName, rows] of Object.entries(matrixDoc)) {
+    if (!Array.isArray(rows)) continue;
+
+    const headerIndex = detectHeaderRowIndex(rows);
+
+    // Scan rows; match is usually in the "issue/concern" column (often early columns)
+    for (let r = 0; r < rows.length; r++) {
+      const row = rows[r];
+      if (!Array.isArray(row)) continue;
+
+      // Only consider likely "concern" cells (first 4 columns) for matching.
+      const maxMatchCols = Math.min(4, row.length);
+
+      for (let c = 0; c < maxMatchCols; c++) {
+        const cellRaw = row[c];
+        const cellNorm = norm(cellRaw);
+        if (!cellNorm) continue;
+
+        let score = 0;
+        for (const q of queries) {
+          score = Math.max(score, scoreMatch(cellNorm, q));
+          if (score === 100) break;
+        }
+        if (score === 0) continue;
+
+        const steps = extractMatrixSteps(rows, headerIndex, r);
+        if (!steps) continue;
+
+        const hit = {
+          score,
+          sheetName,
+          rowIndex: r,
+          colIndex: c,
+          matchedText: String(cellRaw ?? "").trim(),
+          answer: steps.trim(),
+        };
+
+        if (!bestHit || hit.score > bestHit.score) bestHit = hit;
+      }
+    }
+  }
+
+  return bestHit;
 }
 
 // -------------------- providers --------------------
@@ -469,8 +681,28 @@ async function handleAsk(req, res) {
   }
 
   try {
+    // ✅✅✅ NEW: if Matrix has a direct "exact answer" row, return it verbatim (no Claude)
+    const direct = findDirectMatrixAnswer(DOCUMENT_CACHE.matrix, question);
+    if (direct && direct.score >= 70) {
+      log(
+        `[${reqId}] Matrix direct hit: sheet="${direct.sheetName}" row=${direct.rowIndex + 1} score=${direct.score}`
+      );
+
+      return res.json({
+        ok: true,
+        answer: direct.answer,
+        provider: "matrix",
+        model: "Service Matrix's 2026.xlsx",
+        citation: {
+          doc: "Service Matrix 2026",
+          sheet: direct.sheetName,
+          row: direct.rowIndex + 1,
+        },
+      });
+    }
+
     const context = buildContext(docs);
-const systemPrompt = `
+    const systemPrompt = `
 You are the "HotelPlanner Compliance & Revenue Copilot."
 Your goal is to help agents resolve guest issues efficiently while protecting the company's revenue and maintaining 100% strict compliance.
 
