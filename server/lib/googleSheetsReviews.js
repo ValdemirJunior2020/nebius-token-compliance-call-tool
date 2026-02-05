@@ -1,11 +1,16 @@
 // server/lib/googleSheetsReviews.js
-// Google Sheets (Service Account) storage for Reviews
+// ✅ KEEP THIS FILE NAME EXACTLY: googleSheetsReviews.js
+// ✅ This file will now support BOTH: Reviews sheet + Matrix sheet (read-only)
+// ✅ No breaking changes to listReviews / upsertReview
 
 import crypto from "crypto";
 import { google } from "googleapis";
 
 const DEFAULT_SPREADSHEET_ID = "1XhSTbGSuQrR2wGW2yf_TCS1CD0TTOr-swoonByCdhUU";
 const DEFAULT_TAB_NAME = "reviews";
+
+// ✅ NEW DEFAULTS FOR MATRIX (your matrix link)
+const DEFAULT_MATRIX_SHEET_ID = "1rhW5o1NGXHzglJ39WX1s6oYaVxV7E_jGzy6HcyBaM4Y";
 
 function mustEnv(name, fallback = "") {
   const v = process.env[name];
@@ -58,14 +63,20 @@ function required(v, label) {
   return s;
 }
 
-function getSheetsClient() {
+// ✅ One client builder, with selectable scope
+function getSheetsClient(scope = "readwrite") {
   const clientEmail = mustEnv("GOOGLE_SHEETS_CLIENT_EMAIL");
   const privateKey = cleanPrivateKey(mustEnv("GOOGLE_SHEETS_PRIVATE_KEY"));
+
+  const scopes =
+    scope === "readonly"
+      ? ["https://www.googleapis.com/auth/spreadsheets.readonly"]
+      : ["https://www.googleapis.com/auth/spreadsheets"];
 
   const auth = new google.auth.JWT({
     email: clientEmail,
     key: privateKey,
-    scopes: ["https://www.googleapis.com/auth/spreadsheets"],
+    scopes,
   });
 
   return google.sheets({ version: "v4", auth });
@@ -120,11 +131,12 @@ async function readAllRows({ sheets, spreadsheetId, tabName }) {
   });
 }
 
+// ✅ EXISTING EXPORT: unchanged behavior
 export async function listReviews({ email, callCenter } = {}) {
   const spreadsheetId = process.env.GOOGLE_SHEETS_SPREADSHEET_ID || DEFAULT_SPREADSHEET_ID;
   const tabName = process.env.GOOGLE_SHEETS_TAB_NAME || DEFAULT_TAB_NAME;
 
-  const sheets = getSheetsClient();
+  const sheets = getSheetsClient("readwrite");
   await ensureHeaderRow({ sheets, spreadsheetId, tabName });
   const rows = await readAllRows({ sheets, spreadsheetId, tabName });
 
@@ -147,6 +159,7 @@ export async function listReviews({ email, callCenter } = {}) {
   return { reviews: sorted };
 }
 
+// ✅ EXISTING EXPORT: unchanged behavior
 export async function upsertReview({ callCenter, name, email, stars, comment }) {
   const spreadsheetId = process.env.GOOGLE_SHEETS_SPREADSHEET_ID || DEFAULT_SPREADSHEET_ID;
   const tabName = process.env.GOOGLE_SHEETS_TAB_NAME || DEFAULT_TAB_NAME;
@@ -159,7 +172,7 @@ export async function upsertReview({ callCenter, name, email, stars, comment }) 
   const st = clamp(toInt(stars, 0), 1, 5);
   const cm = norm(comment);
 
-  const sheets = getSheetsClient();
+  const sheets = getSheetsClient("readwrite");
   await ensureHeaderRow({ sheets, spreadsheetId, tabName });
 
   const rows = await readAllRows({ sheets, spreadsheetId, tabName });
@@ -240,4 +253,85 @@ export async function upsertReview({ callCenter, name, email, stars, comment }) 
   });
 
   return { review: created, action: "created" };
+}
+
+/**
+ * ✅ Matrix loader (READ ONLY) — FIXED:
+ * - preserves exact tab names (no normalization for titles)
+ * - logs every tab found + every tab loaded + row/col counts
+ * - supports optional tab filtering via tabs: ["Voice Matrix", ...]
+ *
+ * Usage:
+ *   const matrix = await loadMatrixSheets({ spreadsheetId })
+ *   const matrix2 = await loadMatrixSheets({ spreadsheetId, tabs: ["Voice Matrix","Ticket Matrix"] })
+ *
+ * Returns:
+ *   { [tabName]: [ [cells...], ... ] }
+ */
+
+export async function loadMatrixSheets({ spreadsheetId, tabs = [] } = {}) {
+  const sid = norm(spreadsheetId) || process.env.MATRIX_SHEET_ID || DEFAULT_MATRIX_SHEET_ID;
+
+  console.log("📗 [MATRIX] loadMatrixSheets() start", {
+    spreadsheetId: sid,
+    tabsRequested: Array.isArray(tabs) ? tabs : [],
+    ts: new Date().toISOString(),
+  });
+
+  const sheets = getSheetsClient("readonly");
+
+  // ✅ IMPORTANT: do NOT normalize tab titles. Keep exact Google Sheet tab names.
+  let tabTitles = Array.isArray(tabs)
+    ? tabs.map((t) => String(t || "").trim()).filter(Boolean)
+    : [];
+
+  if (!tabTitles.length) {
+    console.log("📗 [MATRIX] No tabs specified. Fetching spreadsheet metadata for ALL tabs...");
+    const meta = await sheets.spreadsheets.get({ spreadsheetId: sid });
+
+    const allTitles = (meta.data.sheets || [])
+      .map((s) => s.properties?.title)
+      .filter(Boolean);
+
+    console.log("📗 [MATRIX] Tabs found in spreadsheet:", allTitles);
+
+    tabTitles = allTitles;
+  } else {
+    console.log("📗 [MATRIX] Tabs specified. Will load ONLY these tabs:", tabTitles);
+  }
+
+  const out = {};
+  for (const title of tabTitles) {
+    try {
+      const safeTitle = String(title).replace(/'/g, "''");
+      const range = `'${safeTitle}'!A:ZZ`;
+
+      console.log("📗 [MATRIX] Loading tab...", { title, range });
+
+      const resp = await sheets.spreadsheets.values.get({
+        spreadsheetId: sid,
+        range,
+        valueRenderOption: "FORMATTED_VALUE",
+      });
+
+      const values = resp.data.values || [];
+      out[title] = values;
+
+      const rows = values.length;
+      const cols = rows ? Math.max(...values.map((r) => (Array.isArray(r) ? r.length : 0))) : 0;
+
+      console.log("✅ [MATRIX] Tab loaded", { title, rows, cols });
+    } catch (e) {
+      console.error("❌ [MATRIX] Failed to load tab", { title, error: e?.message || String(e) });
+      // keep going; don't kill the whole matrix if one tab fails
+    }
+  }
+
+  console.log("✅ [MATRIX] loadMatrixSheets() finished", {
+    loadedTabs: Object.keys(out),
+    tabCount: Object.keys(out).length,
+    ts: new Date().toISOString(),
+  });
+
+  return out;
 }

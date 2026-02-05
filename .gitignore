@@ -72,3 +72,4 @@ gatsby-cache/
 *service-account*.json
 server/*.json
 server/**/psych-support-app-*.json
+FILE: server/.gitignore

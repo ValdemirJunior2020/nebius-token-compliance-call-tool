@@ -5,7 +5,7 @@ import path from "path";
 import { fileURLToPath } from "url";
 import fs from "fs";
 import xlsx from "xlsx";
-import { listReviews, upsertReview } from "./lib/googleSheetsReviews.js";
+import { listReviews, upsertReview, loadMatrixSheets } from "./lib/googleSheetsReviews.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -35,6 +35,22 @@ const errlog = (...a) => console.error("[server]", ...a);
 let DOCUMENT_CACHE = {};
 let LAST_LOAD = 0;
 let DOCS_LOADING = false;
+
+// ✅ Matrix Google Sheet settings
+const MATRIX_SHEET_ID =
+  process.env.MATRIX_SHEET_ID || "1rhW5o1NGXHzglJ39WX1s6oYaVxV7E_jGzy6HcyBaM4Y";
+const MATRIX_TABS = String(process.env.MATRIX_TABS || "")
+  .split(",")
+  .map((s) => s.trim())
+  .filter(Boolean);
+
+log("Boot settings:", {
+  PORT,
+  DEBUG,
+  AI_PROVIDER,
+  MATRIX_SHEET_ID,
+  MATRIX_TABS: MATRIX_TABS.length ? MATRIX_TABS : "(all tabs)",
+});
 
 // -------------------- CORS (FIXED) --------------------
 const FRONTEND_URLS = String(
@@ -86,6 +102,7 @@ app.use((req, res, next) => {
   if (req.method === "OPTIONS") return res.sendStatus(204);
 
   if (!ok) {
+    console.warn("[CORS] blocked origin:", cleanOrigin);
     return res.status(403).json({
       ok: false,
       error: `CORS blocked origin: ${cleanOrigin}`,
@@ -124,9 +141,14 @@ function sheetsConfigured() {
 function safeSheetsStatusLog() {
   const sc = sheetsConfigured();
   console.log(
-    `🧾 Sheets: email=${sc.email ? "✅" : "❌"} key=${sc.key ? "✅" : "❌"} sheetId=${
+    `🧾 Sheets (Reviews SA): email=${sc.email ? "✅" : "❌"} key=${sc.key ? "✅" : "❌"} sheetId=${
       sc.sheetId ? "✅" : "❌"
     } tab=${sc.tab ? "✅" : "❌"}`
+  );
+  console.log(
+    `📗 Matrix Sheet: id=${MATRIX_SHEET_ID ? "✅" : "❌"} tabs=${
+      MATRIX_TABS.length ? MATRIX_TABS.join(", ") : "(all tabs)"
+    }`
   );
 }
 
@@ -135,12 +157,15 @@ app.get("/api/reviews", async (req, res) => {
   try {
     const email = String(req.query.email || "").trim();
     const callCenter = String(req.query.callCenter || "").trim();
+    log("[REVIEWS] list", { email: email || null, callCenter: callCenter || null });
+
     const out = await listReviews({
       email: email || undefined,
       callCenter: callCenter || undefined,
     });
     res.json({ ok: true, ...out });
   } catch (e) {
+    errlog("[REVIEWS] list error:", e?.message || e);
     res.status(500).json({ ok: false, error: e.message || "Failed to load reviews" });
   }
 });
@@ -166,12 +191,34 @@ app.get("/api/reviews/ping", (req, res) => {
   res.json({
     ok: true,
     sheetsConfigured: sheetsConfigured(),
+    matrixConfigured: { sheetId: !!MATRIX_SHEET_ID, tabs: MATRIX_TABS.length ? MATRIX_TABS : null },
+    ts: new Date().toISOString(),
+  });
+});
+
+// ✅ NEW: Matrix ping endpoint (helps confirm reads quickly)
+app.get("/api/matrix/ping", (req, res) => {
+  const matrix = DOCUMENT_CACHE.matrix;
+  const tabCount = matrix && typeof matrix === "object" ? Object.keys(matrix).length : 0;
+  const firstTab = tabCount ? Object.keys(matrix)[0] : null;
+  const firstTabRows = firstTab && Array.isArray(matrix[firstTab]) ? matrix[firstTab].length : 0;
+
+  res.json({
+    ok: true,
+    matrixLoaded: !!matrix,
+    sheetId: MATRIX_SHEET_ID,
+    tabsConfigured: MATRIX_TABS.length ? MATRIX_TABS : null,
+    cachedTabs: tabCount,
+    sample: firstTab ? { tab: firstTab, rows: firstTabRows } : null,
     ts: new Date().toISOString(),
   });
 });
 
 // -------------------- health --------------------
 app.get("/health", (req, res) => {
+  const matrix = DOCUMENT_CACHE.matrix;
+  const matrixTabs = matrix && typeof matrix === "object" ? Object.keys(matrix) : [];
+
   res.json({
     ok: true,
     port: PORT,
@@ -180,6 +227,13 @@ app.get("/health", (req, res) => {
     kimiConfigured: !!KIMI_API_KEY,
     anthropicConfigured: !!ANTHROPIC_API_KEY,
     sheetsConfigured: sheetsConfigured(),
+    matrix: {
+      source: "google_sheets",
+      sheetId: MATRIX_SHEET_ID,
+      tabsConfigured: MATRIX_TABS.length ? MATRIX_TABS : null,
+      cachedTabs: matrixTabs.length,
+      cachedTabNamesPreview: matrixTabs.slice(0, 15),
+    },
     docs: {
       cached: Object.keys(DOCUMENT_CACHE),
       lastLoad: LAST_LOAD ? new Date(LAST_LOAD).toISOString() : null,
@@ -224,7 +278,7 @@ function resolveLocalDocPath(fileName) {
 async function fetchExcelDocument(docName, fileName) {
   const localPath = resolveLocalDocPath(fileName);
   if (localPath) {
-    log(`Loading ${docName} from local: ${localPath}`);
+    log(`📄 Loading ${docName} from local: ${localPath}`);
     const workbook = xlsx.readFile(localPath);
     return parseWorkbook(workbook, docName);
   }
@@ -233,7 +287,7 @@ async function fetchExcelDocument(docName, fileName) {
   const netlifyUrl = `${String(docsBase).replace(/\/+$/, "")}/Assets/${encodeURIComponent(
     fileName
   )}`;
-  log(`Fetching ${docName} from remote: ${netlifyUrl}`);
+  log(`🌐 Fetching ${docName} from remote: ${netlifyUrl}`);
 
   const response = await fetch(netlifyUrl, { cache: "no-store" });
   if (!response.ok) throw new Error(`HTTP ${response.status} fetching ${netlifyUrl}`);
@@ -246,7 +300,7 @@ async function fetchExcelDocument(docName, fileName) {
 async function fetchJsonDocument(docName, fileName) {
   const localPath = resolveLocalDocPath(fileName);
   if (localPath) {
-    log(`Loading ${docName} from local: ${localPath}`);
+    log(`📄 Loading ${docName} from local: ${localPath}`);
     const raw = fs.readFileSync(localPath, "utf-8");
     const json = JSON.parse(raw);
     log(`✅ Parsed ${docName}: JSON keys=${Object.keys(json || {}).length}`);
@@ -257,7 +311,7 @@ async function fetchJsonDocument(docName, fileName) {
   const netlifyUrl = `${String(docsBase).replace(/\/+$/, "")}/Assets/${encodeURIComponent(
     fileName
   )}`;
-  log(`Fetching ${docName} from remote: ${netlifyUrl}`);
+  log(`🌐 Fetching ${docName} from remote: ${netlifyUrl}`);
 
   const response = await fetch(netlifyUrl, { cache: "no-store" });
   if (!response.ok) throw new Error(`HTTP ${response.status} fetching ${netlifyUrl}`);
@@ -277,16 +331,66 @@ function parseWorkbook(workbook, docName) {
   return result;
 }
 
+function matrixStats(matrixDoc) {
+  try {
+    if (!matrixDoc || typeof matrixDoc !== "object") return null;
+    const tabs = Object.keys(matrixDoc);
+    const sample = tabs.slice(0, 5).map((t) => ({
+      tab: t,
+      rows: Array.isArray(matrixDoc[t]) ? matrixDoc[t].length : 0,
+      colsGuess:
+        Array.isArray(matrixDoc[t]) && Array.isArray(matrixDoc[t][0]) ? matrixDoc[t][0].length : 0,
+    }));
+    return { tabs: tabs.length, sample };
+  } catch {
+    return null;
+  }
+}
+
 async function loadDocuments(force = false) {
-  if (DOCS_LOADING) return;
-  if (Object.keys(DOCUMENT_CACHE).length > 0 && !force) return;
+  if (DOCS_LOADING) {
+    log("📚 loadDocuments skipped: already loading");
+    return;
+  }
+  if (Object.keys(DOCUMENT_CACHE).length > 0 && !force) {
+    log("📚 loadDocuments skipped: cache already filled");
+    return;
+  }
 
   DOCS_LOADING = true;
+  console.log("⏳ loadDocuments started...", { force, ts: new Date().toISOString() });
 
+  // ✅ 1) Load Service Matrix from GOOGLE SHEETS (ALWAYS)
+  {
+    const t0 = Date.now();
+    try {
+      console.log("📗 Loading Service Matrix from Google Sheets...", {
+        sheetId: MATRIX_SHEET_ID,
+        tabs: MATRIX_TABS.length ? MATRIX_TABS : "(all tabs)",
+      });
+
+      const matrix = await loadMatrixSheets({
+        spreadsheetId: MATRIX_SHEET_ID,
+        tabs: MATRIX_TABS, // empty => all tabs
+      });
+
+      DOCUMENT_CACHE.matrix = matrix;
+
+      const stats = matrixStats(matrix);
+      console.log("✅ Service Matrix loaded (Google Sheets)", {
+        ms: Date.now() - t0,
+        stats,
+      });
+    } catch (e) {
+      errlog("❌ Failed to load Service Matrix (Google Sheets):", e?.message || e);
+      // keep going so other docs can still load
+    }
+  }
+
+  // ✅ 2) Load other docs (Excel/JSON) from Assets/local/remote
   const docs = [
     { key: "qaVoice", file: "qa-voice.xlsx", name: "QA Voice", kind: "excel" },
     { key: "qaGroup", file: "qa-group.xlsx", name: "QA Groups", kind: "excel" },
-    { key: "matrix", file: "Service Matrix's 2026.xlsx", name: "Service Matrix", kind: "excel" },
     {
       key: "trainingGuide",
       file: "hotelplanner_training_guide.json",
@@ -300,11 +404,15 @@ async function loadDocuments(force = false) {
   for (const doc of docs) {
     const t0 = Date.now();
     try {
+      console.log(`📥 Loading doc "${doc.name}"`, { key: doc.key, file: doc.file, kind: doc.kind });
+
       DOCUMENT_CACHE[doc.key] =
         doc.kind === "json"
           ? await fetchJsonDocument(doc.name, doc.file)
           : await fetchExcelDocument(doc.name, doc.file);
+
       summary.push(`✅ ${doc.name} (${doc.file}) in ${Date.now() - t0}ms`);
+      console.log(`✅ Loaded "${doc.name}"`, { ms: Date.now() - t0 });
     } catch (e) {
       errlog(`❌ Failed to load ${doc.name}:`, e.message);
       summary.push(`❌ ${doc.name} (${doc.file}) -> ${e.message}`);
@@ -316,7 +424,7 @@ async function loadDocuments(force = false) {
 
   console.log("📚 Document load summary:\n" + summary.join("\n"));
   console.log(`📦 Cached docs: ${Object.keys(DOCUMENT_CACHE).join(", ") || "(none)"}`);
-  console.log("✅ Documents load finished.");
+  console.log("✅ loadDocuments finished.", { ts: new Date().toISOString() });
 }
 
 function buildContext(docsSelection) {
@@ -350,6 +458,7 @@ function buildContext(docsSelection) {
 
 // ✅✅✅ MATRIX: direct lookup (NO AI) for exact agent steps/scripts from Service Matrix
 // Your layout: Column B = Concern, Column C = Answer/Steps (exact).
+
 function norm(s) {
   return String(s ?? "")
     .toLowerCase()
@@ -454,7 +563,11 @@ function expandQueryVariants(qNorm) {
   const variants = new Set([qNorm]);
   const add = (s) => s && variants.add(norm(s));
 
-  if (qNorm.includes("double charged") || qNorm.includes("charged twice") || qNorm.includes("double charge")) {
+  if (
+    qNorm.includes("double charged") ||
+    qNorm.includes("charged twice") ||
+    qNorm.includes("double charge")
+  ) {
     add("double charged");
     add("charged twice");
     add("duplicate charge");
@@ -490,13 +603,25 @@ function scoreMatch(cellNorm, qNorm) {
 
 // ✅ Match Column B (index 1) as your "Concern" column, then return Column C (index 2)
 function findDirectMatrixAnswer(matrixDoc, userQuestion) {
-  if (!matrixDoc || typeof matrixDoc !== "object") return null;
+  if (!matrixDoc || typeof matrixDoc !== "object") {
+    DEBUG && console.log("[matrix] not loaded / wrong type");
+    return null;
+  }
 
   const q0 = norm(userQuestion);
   if (!q0) return null;
 
   const queries = expandQueryVariants(q0);
   let bestHit = null;
+
+  const tabNames = Object.keys(matrixDoc);
+  DEBUG &&
+    console.log("[matrix] searching", {
+      q0,
+      variants: queries,
+      tabs: tabNames.length,
+      tabsPreview: tabNames.slice(0, 10),
+    });
 
   for (const [sheetName, rows] of Object.entries(matrixDoc)) {
     if (!Array.isArray(rows)) continue;
@@ -539,11 +664,23 @@ function findDirectMatrixAnswer(matrixDoc, userQuestion) {
     }
   }
 
+  if (DEBUG && bestHit) {
+    console.log("[matrix] bestHit", {
+      score: bestHit.score,
+      sheet: bestHit.sheetName,
+      row1Based: bestHit.rowIndex + 1,
+      matchedText: bestHit.matchedText?.slice(0, 120),
+    });
+  } else if (DEBUG) {
+    console.log("[matrix] no hit");
+  }
+
   return bestHit;
 }
 
 // -------------------- providers --------------------
 async function callNebius(question, systemPrompt) {
+  log("[nebius] sending request...");
   const response = await fetch("https://api.tokenfactory.nebius.com/v1/chat/completions", {
     method: "POST",
     headers: {
@@ -574,6 +711,7 @@ async function callNebius(question, systemPrompt) {
 }
 
 async function callKimi(question, systemPrompt) {
+  log("[kimi] sending request...");
   const response = await fetch("https://api.moonshot.cn/v1/chat/completions", {
     method: "POST",
     headers: {
@@ -604,6 +742,7 @@ async function callKimi(question, systemPrompt) {
 }
 
 async function callAnthropic(question, systemPrompt) {
+  log("[anthropic] sending request...", { model: ANTHROPIC_MODEL });
   const { default: Anthropic } = await import("@anthropic-ai/sdk");
   const anthropic = new Anthropic({ apiKey: ANTHROPIC_API_KEY });
 
@@ -620,13 +759,21 @@ async function callAnthropic(question, systemPrompt) {
 
 // -------------------- main handler --------------------
 async function handleAsk(req, res) {
-  const reqId = `req_${Date.now()}`;
+  const reqId = `req_${Date.now()}_${Math.random().toString(16).slice(2)}`;
   const { question, mode = "cloud", docs = {} } = req.body;
 
-  log(`[${reqId}] Question: ${String(question || "").slice(0, 120)}...`);
+  console.log("➡️ /ask", {
+    reqId,
+    mode,
+    provider: AI_PROVIDER,
+    docs,
+    qPreview: String(question || "").slice(0, 180),
+  });
+
   if (!question) return res.status(400).json({ ok: false, error: "Missing question" });
 
   if (Object.keys(DOCUMENT_CACHE).length === 0 && !DOCS_LOADING) {
+    console.log("📚 Cache empty. Triggering background loadDocuments()...");
     loadDocuments().catch((e) => errlog("docs load error:", e?.message || e));
   }
 
@@ -645,6 +792,7 @@ async function handleAsk(req, res) {
   };
 
   if (!keyCheck[AI_PROVIDER]) {
+    console.error("❌ Missing provider key:", AI_PROVIDER);
     return res.status(500).json({
       ok: false,
       error: `Server missing ${AI_PROVIDER.toUpperCase()}_API_KEY`,
@@ -652,21 +800,34 @@ async function handleAsk(req, res) {
   }
 
   try {
-    // ✅ Matrix first (no AI): match Column B and return Column C verbatim
+    // ✅ Matrix first (no AI): match Column B and return Column C (+ Yes-only flags)
+    console.log("🔎 Matrix direct lookup starting...", {
+      matrixLoaded: !!DOCUMENT_CACHE.matrix,
+      cachedTabs: DOCUMENT_CACHE.matrix ? Object.keys(DOCUMENT_CACHE.matrix).length : 0,
+    });
+
     const direct = findDirectMatrixAnswer(DOCUMENT_CACHE.matrix, question);
+
+    console.log("🔎 Matrix lookup result:", direct ? { score: direct.score, sheet: direct.sheetName, row: direct.rowIndex + 1 } : null);
+
     if (direct && direct.score >= 70) {
-      log(
-        `[${reqId}] Matrix direct hit: sheet="${direct.sheetName}" row=${direct.rowIndex + 1} score=${direct.score}`
-      );
+      console.log("✅ Matrix DIRECT HIT - returning without AI", {
+        reqId,
+        sheet: direct.sheetName,
+        row1Based: direct.rowIndex + 1,
+        score: direct.score,
+      });
 
       return res.json({
         ok: true,
         answer: direct.answer,
         provider: "matrix",
-        model: "Service Matrix's 2026.xlsx",
+        model: "Service Matrix (Google Sheets)",
         citation: {
           doc: "Service Matrix 2026",
-          sheet: direct.sheetName,
+          source: "google_sheets",
+          sheetId: MATRIX_SHEET_ID,
+          tab: direct.sheetName,
           row: direct.rowIndex + 1,
           concernColumn: "B",
           answerColumn: "C",
@@ -674,7 +835,10 @@ async function handleAsk(req, res) {
       });
     }
 
+    console.log("🤖 No strong matrix hit. Falling back to AI with context...");
+
     const context = buildContext(docs);
+
     const systemPrompt = `
 You are the "HotelPlanner Compliance & Revenue Copilot."
 Your goal is to help agents resolve guest issues efficiently while protecting the company's revenue and maintaining 100% strict compliance.
@@ -743,13 +907,17 @@ OUTPUT FORMAT ( STRICTLY FOLLOW THIS):
 
     const answer = await Promise.race([apiPromise, timeoutPromise]);
 
-    log(`[${reqId}] Success (${AI_PROVIDER})`);
+    console.log("✅ AI success", { reqId, provider: AI_PROVIDER });
     return res.json({
       ok: true,
       answer,
       provider: AI_PROVIDER,
       model:
-        AI_PROVIDER === "nebius" ? NEBIUS_MODEL : AI_PROVIDER === "kimi" ? KIMI_MODEL : ANTHROPIC_MODEL,
+        AI_PROVIDER === "nebius"
+          ? NEBIUS_MODEL
+          : AI_PROVIDER === "kimi"
+          ? KIMI_MODEL
+          : ANTHROPIC_MODEL,
     });
   } catch (error) {
     errlog(`[${reqId}] Error:`, error?.message || error);
@@ -769,9 +937,11 @@ OUTPUT FORMAT ( STRICTLY FOLLOW THIS):
 
 app.post("/admin/reload-docs", async (req, res) => {
   try {
+    console.log("🔄 Admin requested reload-docs");
     await loadDocuments(true);
     res.json({ ok: true, message: "Documents reloaded", cached: Object.keys(DOCUMENT_CACHE) });
   } catch (e) {
+    errlog("reload-docs error:", e?.message || e);
     res.status(500).json({ ok: false, error: e.message });
   }
 });
@@ -780,7 +950,17 @@ app.use((req, res) => {
   res.status(404).json({
     ok: false,
     error: "Not found",
-    endpoints: ["/health", "/api/claude", "/api/reviews", "/api/reviews/upsert", "/api/reviews/ping"],
+    endpoints: [
+      "/health",
+      "/api/claude",
+      "/api/ask",
+      "/api/query",
+      "/ask",
+      "/api/reviews",
+      "/api/reviews/upsert",
+      "/api/reviews/ping",
+      "/api/matrix/ping",
+    ],
     provider: AI_PROVIDER,
   });
 });
