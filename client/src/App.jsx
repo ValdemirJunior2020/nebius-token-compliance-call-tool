@@ -241,11 +241,11 @@ const DEFAULT_DOCS = {
 };
 
 const DOC_META = [
-  { key: "matrix", label: "Service Matrix 2026 (.xlsx)", path: MATRIX_PUBLIC_PATH, locked: true },
-  { key: "trainingGuide", label: "Training Guide (JSON)", path: TRAINING_GUIDE_JSON_PATH },
+  { key: "matrix", label: "Service Matrix 2026", path: MATRIX_PUBLIC_PATH, locked: true },
+  { key: "trainingGuide", label: "Training Guide", path: TRAINING_GUIDE_JSON_PATH },
   { key: "rpp", label: "RPP Protection Guide (JSON)", path: RPP_PROTECTION_GUIDE_JSON_PATH },
-  { key: "qaVoice", label: "QA Voice (.xlsx)", path: QA_VOICE_XLSX_PATH },
-  { key: "qaGroup", label: "QA Groups (.xlsx)", path: QA_GROUP_XLSX_PATH },
+  { key: "qaVoice", label: "QA Voice", path: QA_VOICE_XLSX_PATH },
+  { key: "qaGroup", label: "QA Groups", path: QA_GROUP_XLSX_PATH },
 ];
 
 const RESOURCES = [
