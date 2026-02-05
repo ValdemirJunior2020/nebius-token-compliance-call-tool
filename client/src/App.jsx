@@ -4,11 +4,11 @@ import { marked } from "marked";
 import "./App.css";
 import ReviewsPage from "./components/Reviews/ReviewsPage.jsx";
 
-// LOCAL TESTING: http://localhost:5050
-// PRODUCTION: https://your-render-app.onrender.com
-const API_BASE = "https://nebius-token-compliance-call-tool.onrender.com";
+// LOCAL TESTING (server): http://localhost:5050
+// PROD (server): https://nebius-token-compliance-call-tool.onrender.com
+const API_BASE = "https://nebius-token-compliance-call-tool.onrender.com"; // ✅ use local server while you run node server.js
 
-// ✅ UI label for your cloud model (you are using Claude)
+// ✅ UI label for your cloud model
 const CLOUD_PROVIDER_LABEL = "Claude";
 
 // ✅ INPUT LIMIT (saves money by preventing huge prompts)
@@ -19,23 +19,17 @@ const LOADING_GIF_SRC = "/loading.gif";
 const NAV_LOGO_VIDEO_SRC = "/Video_Generation_Confirmation.mp4";
 const ERROR_VIDEO_SRC = "/error.mp4";
 
-// ✅ IMPORTANT: all compliance docs are under /public/Assets
+// ✅ IMPORTANT: Only JSON docs are under /public/Assets now.
+// Matrix + QA Voice + QA Groups are loaded from Google Sheets on the SERVER.
 const ASSETS_BASE = "/Assets";
 
-// downloads (public)
-const QA_GROUP_XLSX_PATH = `${ASSETS_BASE}/qa-group.xlsx`;
-const QA_VOICE_XLSX_PATH = `${ASSETS_BASE}/qa-voice.xlsx`;
-
-// ✅ Matrix is XLSX again (you put it back in Assets)
-const MATRIX_PUBLIC_PATH = `${ASSETS_BASE}/Service Matrix's 2026.xlsx`;
-
-// ✅ Training guide JSON
+// ✅ Training guide JSON (local asset)
 const TRAINING_GUIDE_JSON_PATH = `${ASSETS_BASE}/hotelplanner_training_guide.json`;
 
-// ✅ RPP Protection Guide JSON
+// ✅ RPP Protection Guide JSON (local asset)
 const RPP_PROTECTION_GUIDE_JSON_PATH = `${ASSETS_BASE}/rpp_protection_guide.json`;
 
-// --- QA Master Intro (fixed text) --------------------------------------------
+// --- QA Master Intro ----------------------------------------------------------
 const QA_MASTER_INTRO = `I’m ready to assist as your QA Valentine 💖
 Share the guest situation or agent question, and I’ll give you the exact compliant procedure—clear, step-by-step, and perfectly on script.
 `;
@@ -211,7 +205,7 @@ function tryLoadLocal(key, fallback) {
     const raw = localStorage.getItem(key);
     const v = raw == null ? fallback : JSON.parse(raw);
     return v;
-  } catch (e) {
+  } catch {
     return fallback;
   }
 }
@@ -219,7 +213,7 @@ function tryLoadLocal(key, fallback) {
 function trySaveLocal(key, value) {
   try {
     localStorage.setItem(key, JSON.stringify(value));
-  } catch (e) {}
+  } catch {}
 }
 
 function useAutoResizeTextarea(ref, value) {
@@ -265,6 +259,8 @@ class ErrorBoundary extends React.Component {
 }
 
 // --- UI Configuration ---------------------------------------------------------
+// ✅ These are "logical docs" used by the UI.
+// ✅ Matrix + QA Voice + QA Groups are server-side (Google Sheets), so we DO NOT fetch /Assets files for them.
 const DEFAULT_DOCS = {
   matrix: true, // locked
   trainingGuide: true,
@@ -274,19 +270,17 @@ const DEFAULT_DOCS = {
 };
 
 const DOC_META = [
-  { key: "matrix", label: "Service Matrix 2026", path: MATRIX_PUBLIC_PATH, locked: true },
-  { key: "trainingGuide", label: "Training Guide", path: TRAINING_GUIDE_JSON_PATH },
-  { key: "rpp", label: "RPP Protection Guide (JSON)", path: RPP_PROTECTION_GUIDE_JSON_PATH },
-  { key: "qaVoice", label: "QA Voice", path: QA_VOICE_XLSX_PATH },
-  { key: "qaGroup", label: "QA Groups", path: QA_GROUP_XLSX_PATH },
+  { key: "matrix", label: "Service Matrix 2026", locked: true, source: "server" }, // ✅ Google Sheets on server
+  { key: "qaVoice", label: "QA Voice", source: "server" }, // ✅ Google Sheets on server
+  { key: "qaGroup", label: "QA Groups", source: "server" }, // ✅ Google Sheets on server
+  { key: "trainingGuide", label: "Training Guide", path: TRAINING_GUIDE_JSON_PATH, source: "asset" }, // ✅ local JSON
+  { key: "rpp", label: "RPP Protection Guide (JSON)", path: RPP_PROTECTION_GUIDE_JSON_PATH, source: "asset" }, // ✅ local JSON
 ];
 
 const RESOURCES = [
-  { label: "Service Matrix 2026 (.xlsx)", href: MATRIX_PUBLIC_PATH, fileName: "Service Matrix's 2026.xlsx" },
+  // ✅ Only the JSON files are downloadable from /Assets now (since Matrix/QAs are coming from Sheets)
   { label: "Training Guide (JSON)", href: TRAINING_GUIDE_JSON_PATH, fileName: "hotelplanner_training_guide.json" },
   { label: "RPP Protection Guide (JSON)", href: RPP_PROTECTION_GUIDE_JSON_PATH, fileName: "rpp_protection_guide.json" },
-  { label: "QA Voice (.xlsx)", href: QA_VOICE_XLSX_PATH, fileName: "qa-voice.xlsx" },
-  { label: "QA Groups (.xlsx)", href: QA_GROUP_XLSX_PATH, fileName: "qa-group.xlsx" },
 ];
 
 function buildPayload({ question, mode, docs }) {
@@ -467,9 +461,12 @@ export default function App() {
     return { ...DEFAULT_DOCS, ...(saved || {}), matrix: true };
   });
 
+  // ✅ availability state:
+  // - server docs default TRUE (since they come from Google Sheets on server)
+  // - asset docs are probed via fetch HEAD/GET
   const [docAvail, setDocAvail] = useState(() =>
     DOC_META.reduce((acc, d) => {
-      acc[d.key] = true;
+      acc[d.key] = d.source === "server" ? true : true; // asset will be probed; start as true to avoid false-negative flashes
       return acc;
     }, {})
   );
@@ -507,9 +504,18 @@ export default function App() {
   useEffect(() => trySaveLocal("cc_docs", { ...docs, matrix: true }), [docs]);
   useEffect(() => trySaveLocal("cc_activePage", activePage), [activePage]);
 
+  // ✅ Probe ONLY asset-based docs; server docs always available from Sheets
   const probeDocs = useCallback(async () => {
     const results = {};
     for (const d of DOC_META) {
+      if (d.source === "server") {
+        results[d.key] = true;
+        continue;
+      }
+      if (!d.path) {
+        results[d.key] = false;
+        continue;
+      }
       try {
         const head = await fetchWithTimeout(d.path, { method: "HEAD" }, 8000).catch(() => null);
         if (head && head.ok) results[d.key] = true;
@@ -517,7 +523,7 @@ export default function App() {
           const get = await fetchWithTimeout(d.path, { method: "GET" }, 8000);
           results[d.key] = !!get.ok;
         }
-      } catch (e) {
+      } catch {
         results[d.key] = false;
       }
     }
@@ -600,7 +606,7 @@ export default function App() {
       setBanner({
         type: "error",
         title: "📌 No docs available",
-        sub: "Docs are missing/unreachable. Make sure the files exist in client/public/Assets and are deployed.",
+        sub: "Docs are missing/unreachable. (Only Training Guide + RPP are local assets now; Matrix/QA are from Google Sheets on server.)",
       });
       return;
     }
@@ -633,13 +639,10 @@ export default function App() {
     loadingTickRef.current = setInterval(() => {
       tick += 1;
       setMessages((prev) =>
-        prev.map((m) =>
-          m.id === loadingId && m.kind === "loading"
-            ? { ...m, thinkingText: pickLoadingMessage(tick) }
-            : m
-        )
+        prev.map((m) => (m.id === loadingId && m.kind === "loading" ? { ...m, thinkingText: pickLoadingMessage(tick) } : m))
       );
-    }, 900);
+   }, 2400); // slower (1.8s)
+
 
     setInput("");
 
@@ -649,7 +652,7 @@ export default function App() {
       docs: { ...docsForPayload, _availability: docAvail, _activeDocsLabel: activeDocsLabel },
     });
 
-    // ✅ IMPORTANT: keep only the route your server actually supports
+    // ✅ route your server supports
     const endpoints = ["/api/claude"];
 
     try {
@@ -761,11 +764,7 @@ export default function App() {
               Reviews
             </button>
 
-            <button
-              className={`cc-navItem ${resourcesOpen ? "cc-navItemPill is-active" : ""}`}
-              type="button"
-              onClick={() => setResourcesOpen(true)}
-            >
+            <button className={`cc-navItem ${resourcesOpen ? "cc-navItemPill is-active" : ""}`} type="button" onClick={() => setResourcesOpen(true)}>
               Resources
             </button>
 
@@ -786,7 +785,6 @@ export default function App() {
           <div className="cc-main">
             <div className="cc-thread">
               <div className="cc-threadInner">
-                {/* ✅ FIX: pass apiBase so ReviewsPage never crashes on undefined */}
                 <ReviewsPage apiBase={API_BASE} />
               </div>
             </div>
@@ -897,8 +895,7 @@ export default function App() {
                 </div>
 
                 <div className="cc-footer-note">
-                  Powered by {CLOUD_PROVIDER_LABEL} • Matrix always included •{" "}
-                  <span style={{ fontWeight: 700 }}>{remainingChars}</span> chars left
+                  Powered by {CLOUD_PROVIDER_LABEL} • Matrix always included • <span style={{ fontWeight: 700 }}>{remainingChars}</span> chars left
                 </div>
 
                 <div className="cc-footer-dev">Developed by Valdemir Junior</div>
