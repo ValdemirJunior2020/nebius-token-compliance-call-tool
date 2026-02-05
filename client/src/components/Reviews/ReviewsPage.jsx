@@ -3,7 +3,6 @@ import StarRating from "./StarRating.jsx";
 
 const CALL_CENTERS = ["Buwelo", "Concentrix", "WNS", "Ideal", "TEP", "Hotel-Planner"];
 
-
 function norm(s) {
   return String(s ?? "").trim();
 }
@@ -46,12 +45,26 @@ export default function ReviewsPage({ apiBase }) {
   const [filterCC, setFilterCC] = useState("All");
   const [search, setSearch] = useState("");
 
-  const abortRef = useRef(null);
+  // One AbortController per "request key" so unrelated requests don't cancel each other.
+  const abortMapRef = useRef(new Map());
 
-  async function fetchJson(url, options = {}) {
-    if (abortRef.current) abortRef.current.abort();
+  function abortKey(key) {
+    const m = abortMapRef.current;
+    const prev = m.get(key);
+    if (prev) prev.abort();
     const ctrl = new AbortController();
-    abortRef.current = ctrl;
+    m.set(key, ctrl);
+    return ctrl;
+  }
+
+  function abortAll() {
+    const m = abortMapRef.current;
+    for (const ctrl of m.values()) ctrl.abort();
+    m.clear();
+  }
+
+  async function fetchJson(url, options = {}, { key = "default" } = {}) {
+    const ctrl = abortKey(key);
 
     const res = await fetch(url, {
       ...options,
@@ -82,9 +95,10 @@ export default function ReviewsPage({ apiBase }) {
     setLoading(true);
     try {
       const url = `${BASE}/api/reviews`;
-      const data = await fetchJson(url);
+      const data = await fetchJson(url, {}, { key: "loadAll" }); // only cancels previous loadAll
       setReviews(Array.isArray(data?.reviews) ? data.reviews : []);
     } catch (e) {
+      if (e?.name === "AbortError") return; // ignore canceled request
       setError(e?.message || "Failed to load reviews");
     } finally {
       setLoading(false);
@@ -101,7 +115,7 @@ export default function ReviewsPage({ apiBase }) {
     try {
       const qs = new URLSearchParams({ email: em, callCenter: norm(callCenter) });
       const url = `${BASE}/api/reviews?${qs.toString()}`;
-      const data = await fetchJson(url);
+      const data = await fetchJson(url, {}, { key: "findMine" }); // only cancels previous findMine
       const mine = Array.isArray(data?.reviews) ? data.reviews[0] : null;
 
       if (!mine) {
@@ -114,6 +128,7 @@ export default function ReviewsPage({ apiBase }) {
       setComment(mine.comment || "");
       setOkMsg("Loaded your existing review. Edit and click Save.");
     } catch (e) {
+      if (e?.name === "AbortError") return;
       setError(e?.message || "Failed to find your review");
     } finally {
       setLoading(false);
@@ -138,15 +153,20 @@ export default function ReviewsPage({ apiBase }) {
     setLoading(true);
     try {
       const url = `${BASE}/api/reviews/upsert`;
-      const data = await fetchJson(url, {
-        method: "POST",
-        body: JSON.stringify({ callCenter: cc, name: nm, email: em, stars: st, comment: cm }),
-      });
+      const data = await fetchJson(
+        url,
+        {
+          method: "POST",
+          body: JSON.stringify({ callCenter: cc, name: nm, email: em, stars: st, comment: cm }),
+        },
+        { key: "saveReview" } // only cancels previous saveReview
+      );
 
       setOkMsg(data?.action === "updated" ? "Review updated ✅" : "Review saved ✅");
       setTab("view");
-      await loadAll();
+      await loadAll(); // no longer aborts the POST, because different keys
     } catch (e) {
+      if (e?.name === "AbortError") return;
       setError(e?.message || "Failed to save review");
     } finally {
       setLoading(false);
@@ -155,7 +175,7 @@ export default function ReviewsPage({ apiBase }) {
 
   useEffect(() => {
     loadAll();
-    return () => abortRef.current?.abort?.();
+    return () => abortAll(); // abort everything on unmount
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [BASE]);
 
@@ -186,13 +206,7 @@ export default function ReviewsPage({ apiBase }) {
     const q = normKey(search);
     if (q) {
       rows = rows.filter((r) => {
-        const hay = [
-          r.name,
-          r.email,
-          r.callCenter,
-          r.comment,
-          String(r.stars ?? ""),
-        ]
+        const hay = [r.name, r.email, r.callCenter, r.comment, String(r.stars ?? "")]
           .map((x) => String(x ?? ""))
           .join(" ")
           .toLowerCase();
@@ -381,7 +395,12 @@ export default function ReviewsPage({ apiBase }) {
                   disabled={loading}
                 />
 
-                <button className="rv-btn rv-btnGhost" type="button" onClick={loadAll} disabled={loading}>
+                <button
+                  className="rv-btn rv-btnGhost"
+                  type="button"
+                  onClick={loadAll}
+                  disabled={loading}
+                >
                   {loading ? "Refreshing…" : "Refresh"}
                 </button>
               </div>
