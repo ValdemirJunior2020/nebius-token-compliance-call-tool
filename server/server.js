@@ -106,7 +106,6 @@ const SHEETS_SHEET_ID = process.env.GOOGLE_SHEETS_SPREADSHEET_ID || "";
 const SHEETS_TAB = process.env.GOOGLE_SHEETS_TAB_NAME || "";
 
 function sheetsKeyNormalized() {
-  // Render often stores as multiline OR with \n - normalize both
   const k = String(SHEETS_KEY_RAW || "").trim();
   if (!k) return "";
   return k.includes("\\n") ? k.replace(/\\n/g, "\n") : k;
@@ -132,7 +131,6 @@ function safeSheetsStatusLog() {
 }
 
 // -------------------- Reviews (Google Sheets) --------------------
-// Stores: call center, name, email, stars(1-5), comment + timestamps
 app.get("/api/reviews", async (req, res) => {
   try {
     const email = String(req.query.email || "").trim();
@@ -164,7 +162,6 @@ app.post("/api/reviews/upsert", async (req, res) => {
   }
 });
 
-// ✅ NEW: Reviews ping endpoint (you tried /api/reviews/ping)
 app.get("/api/reviews/ping", (req, res) => {
   res.json({
     ok: true,
@@ -194,15 +191,9 @@ app.get("/health", (req, res) => {
 });
 
 // -------------------- docs loading --------------------
-
-// ✅ Prefer local repo assets first (Render + local dev)
-// Repo paths:
-// - client/public/Assets/* (source of truth)
-// - server/data/* (fallback)
 const LOCAL_ASSETS_DIR = path.join(__dirname, "../client/public/Assets");
 const LOCAL_SERVER_DATA_DIR = path.join(__dirname, "data");
 
-// ✅ Netlify/Frontend base (only used as final fallback)
 function getDocsBase() {
   return (
     process.env.DOCS_BASE_URL ||
@@ -220,7 +211,6 @@ function existsFile(p) {
   }
 }
 
-// ✅ Resolve doc path locally first (Render-friendly)
 function resolveLocalDocPath(fileName) {
   const p1 = path.join(LOCAL_ASSETS_DIR, fileName);
   if (existsFile(p1)) return p1;
@@ -232,7 +222,6 @@ function resolveLocalDocPath(fileName) {
 }
 
 async function fetchExcelDocument(docName, fileName) {
-  // ✅ 1) LOCAL FIRST
   const localPath = resolveLocalDocPath(fileName);
   if (localPath) {
     log(`Loading ${docName} from local: ${localPath}`);
@@ -240,7 +229,6 @@ async function fetchExcelDocument(docName, fileName) {
     return parseWorkbook(workbook, docName);
   }
 
-  // ✅ 2) REMOTE FALLBACK (Netlify/Frontend)
   const docsBase = getDocsBase();
   const netlifyUrl = `${String(docsBase).replace(/\/+$/, "")}/Assets/${encodeURIComponent(
     fileName
@@ -256,7 +244,6 @@ async function fetchExcelDocument(docName, fileName) {
 }
 
 async function fetchJsonDocument(docName, fileName) {
-  // ✅ 1) LOCAL FIRST
   const localPath = resolveLocalDocPath(fileName);
   if (localPath) {
     log(`Loading ${docName} from local: ${localPath}`);
@@ -266,7 +253,6 @@ async function fetchJsonDocument(docName, fileName) {
     return json;
   }
 
-  // ✅ 2) REMOTE FALLBACK (Netlify/Frontend)
   const docsBase = getDocsBase();
   const netlifyUrl = `${String(docsBase).replace(/\/+$/, "")}/Assets/${encodeURIComponent(
     fileName
@@ -337,7 +323,6 @@ function buildContext(docsSelection) {
   const parts = [];
   const MAX_CHARS = 6000;
 
-  // ✅ Matrix ALWAYS included
   const wantMatrix = true;
 
   if (docsSelection.qaVoice && DOCUMENT_CACHE.qaVoice) {
@@ -364,8 +349,7 @@ function buildContext(docsSelection) {
 }
 
 // ✅✅✅ MATRIX: direct lookup (NO AI) for exact agent steps/scripts from Service Matrix
-// Goal: if the Matrix has a row for the concern, return the Matrix instructions/steps verbatim.
-
+// Your layout: Column B = Concern, Column C = Answer/Steps (exact).
 function norm(s) {
   return String(s ?? "")
     .toLowerCase()
@@ -376,118 +360,110 @@ function norm(s) {
 
 function isNoValue(v) {
   const s = norm(v);
+  return (
+    !s ||
+    s === "no" ||
+    s === "n" ||
+    s === "none" ||
+    s === "na" ||
+    s === "n a" ||
+    s === "n/a" ||
+    s === "0" ||
+    s === "false"
+  );
+}
+
+function normalizeYesNo(v) {
+  const s = norm(v);
   if (s === "y" || s === "yes" || s === "true" || s === "1") return "Yes";
   if (s === "n" || s === "no" || s === "false" || s === "0") return "No";
   return String(v ?? "").trim();
 }
 
 function detectHeaderRowIndex(rows) {
-  // Look for a row that contains "instructions" (common in your Matrix header)
   const MAX_SCAN = Math.min(40, rows.length);
   for (let r = 0; r < MAX_SCAN; r++) {
     const row = rows[r];
     if (!Array.isArray(row)) continue;
     const joined = row.map((x) => norm(x)).join(" | ");
-    if (joined.includes("instructions")) return r;
+    if (joined.includes("instructions") || joined.includes("concern") || joined.includes("issue")) {
+      return r;
+    }
   }
   return -1;
 }
 
 function buildHeaderMap(headerRow) {
-  // Map normalized header -> column index
   const map = new Map();
   if (!Array.isArray(headerRow)) return map;
   for (let i = 0; i < headerRow.length; i++) {
     const h = norm(headerRow[i]);
     if (!h) continue;
-    // keep first occurrence only
     if (!map.has(h)) map.set(h, i);
   }
   return map;
 }
 
+// ✅ Column C (index 2) is returned verbatim.
+// ✅ Additionally, if your sheet has Slack/Refund Queue/Create Ticket/Supervisor columns with YES,
+//    we append them as "Slack: Yes" etc (NO is omitted).
 function extractMatrixSteps(rows, headerIndex, rowIndex) {
   const row = rows[rowIndex];
   if (!Array.isArray(row)) return null;
 
+  const colC = String(row[2] ?? "").trim(); // Column C
+  const base = colC && !isNoValue(colC) ? colC : "";
+
   const headerRow = headerIndex >= 0 ? rows[headerIndex] : null;
   const headerMap = buildHeaderMap(headerRow);
 
-  // Prefer these columns if they exist (Voice Matrix has them)
-  const preferredHeaders = [
-    "instructions",
-    "slack",
-    "refund queue",
-    "create a ticket",
-    "supervisor",
-  ];
+  const preferredHeaders = ["slack", "refund queue", "create a ticket", "supervisor"];
 
-  const parts = [];
-  let instructionsRaw = null;
+  const extras = [];
+  for (const h of preferredHeaders) {
+    if (!headerMap.has(h)) continue;
+    const idx = headerMap.get(h);
+    const v = row[idx];
+    const yn = normalizeYesNo(v);
+    const ynNorm = norm(yn);
 
-  // If we found recognizable headers, pull those columns in that order.
-  const hasKnownHeaders = preferredHeaders.some((h) => headerMap.has(h));
-  if (hasKnownHeaders) {
-    for (const h of preferredHeaders) {
-      if (!headerMap.has(h)) continue;
-      const idx = headerMap.get(h);
-      const v = row[idx];
-      if (isNoValue(v)) continue;
+    // Only show when it is a real "Yes" OR some non-empty meaningful value (like a channel name)
+    if (!yn || isNoValue(yn)) continue;
+    if (ynNorm === "no" || ynNorm === "n") continue;
 
-      const label =
-        h === "instructions"
-          ? "Instructions"
-          : h === "refund queue"
-          ? "Refund Queue"
-          : h === "create a ticket"
-          ? "Create a Ticket"
-          : h === "supervisor"
-          ? "Supervisor"
-          : "Slack";
+    const label =
+      h === "refund queue"
+        ? "Refund Queue"
+        : h === "create a ticket"
+        ? "Create a Ticket"
+        : h === "supervisor"
+        ? "Supervisor"
+        : "Slack";
 
-      if (h === "instructions") instructionsRaw = String(v).trim();
-      parts.push(`${label}: ${normalizeYesNo(v)}`);
-    }
-  } else {
-    // Fallback: return the longest meaningful text cell (usually the instructions cell)
-    let best = null;
-    for (let i = 0; i < row.length; i++) {
-      const v = String(row[i] ?? "").trim();
-      if (!v) continue;
-      if (v.length < 12) continue;
-      if (isNoValue(v)) continue;
-      if (!best || v.length > best.length) best = v;
-    }
-    if (best) parts.push(best);
+    extras.push(`${label}: ${yn}`);
   }
 
-  if (!parts.length) return null;
-  // If only instructions are present, return the cell verbatim (no extra label)
-  if (instructionsRaw && parts.length === 1) return instructionsRaw;
-  return parts.join("\n\n");
+  if (!base && !extras.length) return null;
+  if (!extras.length) return base;
+
+  return base ? `${base}\n\n${extras.join("\n")}` : extras.join("\n");
 }
 
-// Small alias expansion for common phrasing (fast + safe; avoids heavy fuzzy on huge sheets)
+// Small alias expansion (fast + safe)
 function expandQueryVariants(qNorm) {
   const variants = new Set([qNorm]);
-
   const add = (s) => s && variants.add(norm(s));
 
-  // Common concern synonyms
-  if (
-    qNorm.includes("double charged") ||
-    qNorm.includes("charged twice") ||
-    qNorm.includes("double charge")
-  ) {
+  if (qNorm.includes("double charged") || qNorm.includes("charged twice") || qNorm.includes("double charge")) {
     add("double charged");
     add("charged twice");
     add("duplicate charge");
     add("double charge");
   }
 
-  if (qNorm.includes("refund") && qNorm.includes("status")) {
-    add("refund status");
-    add("status of refund");
+  if (qNorm.includes("early departure")) {
+    add("early departure after check in");
+    add("early departure after check-in");
   }
 
   return Array.from(variants).filter(Boolean);
@@ -496,7 +472,7 @@ function expandQueryVariants(qNorm) {
 function scoreMatch(cellNorm, qNorm) {
   if (!cellNorm || !qNorm) return 0;
   if (cellNorm === qNorm) return 100;
-  if (cellNorm.includes(qNorm) || qNorm.includes(cellNorm)) return 80;
+  if (cellNorm.includes(qNorm) || qNorm.includes(cellNorm)) return 85;
 
   const qTokens = qNorm.split(" ").filter(Boolean);
   const cTokens = cellNorm.split(" ").filter(Boolean);
@@ -506,23 +482,20 @@ function scoreMatch(cellNorm, qNorm) {
   let overlap = 0;
   for (const t of qTokens) if (cSet.has(t)) overlap++;
 
-  // Require at least 2 overlapping tokens for multi-word queries,
-  // but allow 1 overlap for short queries (<=2 tokens)
   const minOverlap = qTokens.length <= 2 ? 1 : 2;
   if (overlap < minOverlap) return 0;
 
-  // scale score with overlap
-  return Math.min(75, 45 + overlap * 10);
+  return Math.min(80, 45 + overlap * 10);
 }
 
+// ✅ Match Column B (index 1) as your "Concern" column, then return Column C (index 2)
 function findDirectMatrixAnswer(matrixDoc, userQuestion) {
-  if (!matrixDoc || typeof matrixDoc !== 'object') return null;
+  if (!matrixDoc || typeof matrixDoc !== "object") return null;
 
   const q0 = norm(userQuestion);
   if (!q0) return null;
 
   const queries = expandQueryVariants(q0);
-
   let bestHit = null;
 
   for (const [sheetName, rows] of Object.entries(matrixDoc)) {
@@ -530,15 +503,14 @@ function findDirectMatrixAnswer(matrixDoc, userQuestion) {
 
     const headerIndex = detectHeaderRowIndex(rows);
 
-    // Scan rows; match is usually in the "issue/concern" column (often early columns)
     for (let r = 0; r < rows.length; r++) {
       const row = rows[r];
       if (!Array.isArray(row)) continue;
 
-      // Only consider likely "concern" cells (first 4 columns) for matching.
-      const maxMatchCols = Math.min(4, row.length);
+      // ✅ primary: Column B only
+      const colsToCheck = row.length > 1 ? [1] : [0];
 
-      for (let c = 0; c < maxMatchCols; c++) {
+      for (const c of colsToCheck) {
         const cellRaw = row[c];
         const cellNorm = norm(cellRaw);
         if (!cellNorm) continue;
@@ -654,7 +626,6 @@ async function handleAsk(req, res) {
   log(`[${reqId}] Question: ${String(question || "").slice(0, 120)}...`);
   if (!question) return res.status(400).json({ ok: false, error: "Missing question" });
 
-  // ✅ If docs aren't loaded yet, kick a load and proceed when ready
   if (Object.keys(DOCUMENT_CACHE).length === 0 && !DOCS_LOADING) {
     loadDocuments().catch((e) => errlog("docs load error:", e?.message || e));
   }
@@ -681,7 +652,7 @@ async function handleAsk(req, res) {
   }
 
   try {
-    // ✅✅✅ NEW: if Matrix has a direct "exact answer" row, return it verbatim (no Claude)
+    // ✅ Matrix first (no AI): match Column B and return Column C verbatim
     const direct = findDirectMatrixAnswer(DOCUMENT_CACHE.matrix, question);
     if (direct && direct.score >= 70) {
       log(
@@ -697,6 +668,8 @@ async function handleAsk(req, res) {
           doc: "Service Matrix 2026",
           sheet: direct.sheetName,
           row: direct.rowIndex + 1,
+          concernColumn: "B",
+          answerColumn: "C",
         },
       });
     }
@@ -821,7 +794,6 @@ app.listen(PORT, () => {
   console.log(`🔑 Anthropic: ${ANTHROPIC_API_KEY ? "✅" : "❌"}`);
   safeSheetsStatusLog();
 
-  // ✅ Background preload (non-blocking)
   console.log("⏳ Loading documents (background)...");
   loadDocuments().catch((e) => errlog("docs load error:", e?.message || e));
 });
