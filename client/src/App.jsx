@@ -1,3 +1,4 @@
+// App.jsx
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { marked } from "marked";
 import "./App.css";
@@ -39,6 +40,23 @@ const QA_MASTER_INTRO = `I’m ready to assist as your QA Valentine 💖
 Share the guest situation or agent question, and I’ll give you the exact compliant procedure—clear, step-by-step, and perfectly on script.
 `;
 
+// ✅ Loading “thinking” messages (rotates while waiting)
+const LOADING_THINKING_MESSAGES = [
+  "Checking the database…",
+  "Looking into the Service Matrix…",
+  "Scanning QA Voice rules…",
+  "Comparing against the Training Guide…",
+  "Verifying RPP policy…",
+  "Cross-checking dates and itinerary details…",
+  "Consulting April the boss… 👀",
+  `Asking ${CLOUD_PROVIDER_LABEL} nicely…`,
+  "Doing math (very carefully)…",
+  "Opening the imaginary binder labeled “Procedure” 📚",
+  "Making sure we don’t promise refunds… 😅",
+  "Double-checking we didn’t miss a required question…",
+  "Almost there…",
+];
+
 // --- logging ----------------------------------------------------------------
 const DEBUG = true;
 function log(...args) {
@@ -56,6 +74,7 @@ function errlog(...args) {
 
 // --- utils -------------------------------------------------------------------
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
 function genId() {
   try {
     return crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(16).slice(2)}`;
@@ -63,6 +82,7 @@ function genId() {
     return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
   }
 }
+
 function nowIso() {
   try {
     return new Date().toISOString();
@@ -70,6 +90,7 @@ function nowIso() {
     return String(Date.now());
   }
 }
+
 function safeString(v) {
   if (v == null) return "";
   if (typeof v === "string") return v;
@@ -79,25 +100,37 @@ function safeString(v) {
     return String(v);
   }
 }
+
 function normalizeWs(s) {
   return safeString(s).replace(/\r\n/g, "\n").replace(/\u0000/g, "").trim();
 }
+
 function clamp(n, a, b) {
   return Math.max(a, Math.min(b, n));
 }
+
 function isAbort(error) {
   return error?.name === "AbortError" || /aborted/i.test(String(error?.message || ""));
 }
+
 function asHumanError(error) {
   const msg = String(error?.message || error || "");
   return msg.length > 900 ? msg.slice(0, 900) + "…" : msg;
 }
+
 function stripDangerousHtml(html) {
   let out = String(html || "");
   out = out.replace(/<\s*(script|style)[^>]*>[\s\S]*?<\s*\/\s*\1\s*>/gi, "");
   out = out.replace(/\son\w+\s*=\s*(".*?"|'.*?'|[^\s>]+)/gi, "");
   out = out.replace(/(href|src)\s*=\s*("|\')\s*javascript:[\s\S]*?\2/gi, "$1=$2#$2");
   return out;
+}
+
+// ✅ picks a rotating loading message safely
+function pickLoadingMessage(i) {
+  const list = Array.isArray(LOADING_THINKING_MESSAGES) && LOADING_THINKING_MESSAGES.length ? LOADING_THINKING_MESSAGES : [];
+  if (!list.length) return `Analyzing with ${CLOUD_PROVIDER_LABEL}…`;
+  return String(list[i % list.length]);
 }
 
 async function fetchWithTimeout(url, options = {}, timeoutMs = 45000) {
@@ -410,6 +443,15 @@ export default function App() {
   const textareaRef = useRef(null);
   const threadEndRef = useRef(null);
 
+  // ✅ loading ticker (rotates LOADING_THINKING_MESSAGES)
+  const loadingTickRef = useRef(null);
+
+  useEffect(() => {
+    return () => {
+      if (loadingTickRef.current) clearInterval(loadingTickRef.current);
+    };
+  }, []);
+
   const [activePage, setActivePage] = useState(() => {
     const saved = tryLoadLocal("cc_activePage", "chat");
     return saved === "reviews" ? "reviews" : "chat";
@@ -574,7 +616,31 @@ export default function App() {
     setIsSending(true);
 
     addMessage({ id: genId(), role: "user", text: question, ts: Date.now() });
-    addMessage({ id: genId(), role: "assistant", kind: "loading", text: "", thinkingText: `Analyzing with ${CLOUD_PROVIDER_LABEL}…`, ts: Date.now() });
+
+    // ✅ loading bubble with rotating messages
+    const loadingId = genId();
+    addMessage({
+      id: loadingId,
+      role: "assistant",
+      kind: "loading",
+      text: "",
+      thinkingText: pickLoadingMessage(0),
+      ts: Date.now(),
+    });
+
+    if (loadingTickRef.current) clearInterval(loadingTickRef.current);
+    let tick = 0;
+    loadingTickRef.current = setInterval(() => {
+      tick += 1;
+      setMessages((prev) =>
+        prev.map((m) =>
+          m.id === loadingId && m.kind === "loading"
+            ? { ...m, thinkingText: pickLoadingMessage(tick) }
+            : m
+        )
+      );
+    }, 900);
+
     setInput("");
 
     const payload = buildPayload({
@@ -591,6 +657,12 @@ export default function App() {
       const answerText = pickAnswerFromBody(result?.body);
       const finalText = normalizeWs(answerText) || "No answer returned.";
 
+      // stop rotating
+      if (loadingTickRef.current) {
+        clearInterval(loadingTickRef.current);
+        loadingTickRef.current = null;
+      }
+
       replaceLastAssistant({
         kind: undefined,
         text: finalText,
@@ -601,6 +673,13 @@ export default function App() {
       setHealth((h) => ({ ...h, ok: true, last: Date.now() }));
     } catch (e) {
       errlog("send() error:", e);
+
+      // stop rotating
+      if (loadingTickRef.current) {
+        clearInterval(loadingTickRef.current);
+        loadingTickRef.current = null;
+      }
+
       const status = e?.status;
 
       if (status === 401) {
@@ -631,6 +710,11 @@ export default function App() {
 
       setHealth((h) => ({ ...h, ok: false, last: Date.now() }));
     } finally {
+      // extra safety
+      if (loadingTickRef.current) {
+        clearInterval(loadingTickRef.current);
+        loadingTickRef.current = null;
+      }
       setIsSending(false);
     }
   }, [input, isSending, docs, mode, addMessage, replaceLastAssistant, docAvail, activeDocsLabel]);
@@ -677,7 +761,11 @@ export default function App() {
               Reviews
             </button>
 
-            <button className={`cc-navItem ${resourcesOpen ? "cc-navItemPill is-active" : ""}`} type="button" onClick={() => setResourcesOpen(true)}>
+            <button
+              className={`cc-navItem ${resourcesOpen ? "cc-navItemPill is-active" : ""}`}
+              type="button"
+              onClick={() => setResourcesOpen(true)}
+            >
               Resources
             </button>
 
