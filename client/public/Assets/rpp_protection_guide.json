@@ -113,16 +113,41 @@
       "policy_text": "Fire, Flood, Burglary, Vandalism and Natural Disaster causes home to be Uninhabitable.",
       "keywords": ["home uninhabitable", "fire", "flood", "burglary", "vandalism", "natural disaster"]
     },
-    {
-      "id": "injury_illness_family_member",
-      "title": "Injury/Illness - Family Member",
-      "category_id": "personal_health_family",
-      "covered_parties": ["immediate_family_member"],
-      "trigger_summary": "Serious injury or illness occurs to hotel guest’s immediate family member.",
-      "time_window": null,
-      "policy_text": "Serious injury or illness occurring to Hotel Guest's immediate family member.",
-      "keywords": ["family illness", "family injury", "serious illness", "immediate family"]
-    },
+   {
+  "id": "injury_illness_family_member",
+  "title": "Injury/Illness - Family Member",
+  "category_id": "personal_health_family",
+  "covered_parties": ["immediate_family_member"],
+  "trigger_summary": "Serious injury or illness occurs to hotel guest’s immediate family member.",
+  "time_window": null,
+  "policy_text": "Serious injury or illness occurring to Hotel Guest's immediate family member. Immediate family member means your spouse (by marriage, common-law, or civil union) or your domestic partner; parent; child(ren), including children who are, or are in the process of becoming adopted; siblings; grandparent or grandchild(ren); stepparent; stepchild; stepsibling; legal guardian; ward; in-laws (father or mother), aunt, uncle, or first cousins. The only exclusion would be nephews/nieces.",
+  "keywords": [
+    "family illness",
+    "family injury",
+    "serious illness",
+    "immediate family",
+    "spouse",
+    "domestic partner",
+    "parent",
+    "child",
+    "adopted",
+    "sibling",
+    "grandparent",
+    "grandchild",
+    "stepparent",
+    "stepchild",
+    "stepsibling",
+    "legal guardian",
+    "ward",
+    "in-law",
+    "aunt",
+    "uncle",
+    "first cousin",
+    "excludes nephews",
+    "excludes nieces"
+  ]
+},
+
     {
       "id": "injury_illness_you_or_companion",
       "title": "Injury/Illness - You or Companion",
