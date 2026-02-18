@@ -35,7 +35,7 @@ const TRAINING_GUIDE_JSON_PATH = `${ASSETS_BASE}/hotelplanner_training_guide.jso
 const RPP_PROTECTION_GUIDE_JSON_PATH = `${ASSETS_BASE}/rpp_protection_guide.json`;
 
 // --- QA Master Intro (fixed text) --------------------------------------------
-const QA_MASTER_INTRO = `I’m ready to assist as your QA Valentine 💖
+const QA_MASTER_INTRO = `I’m ready to assist as your QA 💖
 Share the guest situation or agent question, and I’ll give you the exact compliant procedure—clear, step-by-step, and perfectly on script.
 `;
 
