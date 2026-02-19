@@ -48,6 +48,10 @@ let LAST_LOAD = 0;
 let DOCS_LOADING = false;
 
 // -------------------- CORS --------------------
+<<<<<<< HEAD
+=======
+// ✅ FIX: Clean trailing slashes properly
+>>>>>>> c94ace8 (02/19/26)
 const FRONTEND_URLS = String(
   process.env.FRONTEND_URLS ||
     process.env.FRONTEND_URL ||
@@ -67,6 +71,7 @@ const ALLOWED_ORIGINS = new Set([
   FRONTEND_URL_DEV,
   "http://localhost:5173",
   "http://localhost:3000",
+  "https://nebius-api-call-compliance-tool.netlify.app", // Added hardcoded just in case
 ]);
 
 function isNetlifySubdomain(origin) {
@@ -88,7 +93,7 @@ app.use((req, res, next) => {
   const ok = ALLOWED_ORIGINS.has(cleanOrigin) || isNetlifySubdomain(cleanOrigin);
 
   if (ok) {
-    res.setHeader("Access-Control-Allow-Origin", cleanOrigin);
+    res.setHeader("Access-Control-Allow-Origin", origin); // Return exactly what they sent
     res.setHeader("Vary", "Origin");
     res.setHeader("Access-Control-Allow-Credentials", "true");
     res.setHeader("Access-Control-Allow-Methods", "GET,POST,OPTIONS");
@@ -255,9 +260,14 @@ async function fetchExcelDocument(docName, fileName) {
   }
 
   const docsBase = getDocsBase();
+<<<<<<< HEAD
   const netlifyUrl = `${String(docsBase).replace(/\/+$/, "")}/Assets/${encodeURIComponent(
     fileName
   )}`;
+=======
+  // ✅ FIX: Using encodeURI handles the apostrophe natively without crashing Netlify URLs
+  const netlifyUrl = `${String(docsBase).replace(/\/+$/, "")}/Assets/${encodeURI(fileName)}`;
+>>>>>>> c94ace8 (02/19/26)
 
   log(`Fetching ${docName} from remote: ${netlifyUrl}`);
   const response = await fetch(netlifyUrl, { cache: "no-store" });
@@ -279,9 +289,14 @@ async function fetchJsonDocument(docName, fileName) {
   }
 
   const docsBase = getDocsBase();
+<<<<<<< HEAD
   const netlifyUrl = `${String(docsBase).replace(/\/+$/, "")}/Assets/${encodeURIComponent(
     fileName
   )}`;
+=======
+  // ✅ FIX: Using encodeURI handles characters correctly
+  const netlifyUrl = `${String(docsBase).replace(/\/+$/, "")}/Assets/${encodeURI(fileName)}`;
+>>>>>>> c94ace8 (02/19/26)
 
   log(`Fetching ${docName} from remote: ${netlifyUrl}`);
   const response = await fetch(netlifyUrl, { cache: "no-store" });

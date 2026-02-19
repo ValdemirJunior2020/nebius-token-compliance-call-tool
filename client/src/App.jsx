@@ -4,7 +4,7 @@ import "./App.css";
 import ReviewsPage from "./components/Reviews/ReviewsPage.jsx";
 
 // LOCAL TESTING: http://localhost:5050
-// PRODUCTION: https://your-render-app.onrender.com
+// PRODUCTION: https://nebius-token-compliance-call-tool.onrender.com
 const API_BASE = "https://nebius-token-compliance-call-tool.onrender.com";
 
 // ✅ UI label for your cloud model (you are using Claude)
@@ -115,8 +115,9 @@ async function fetchWithTimeout(url, options = {}, timeoutMs = 45000) {
 
 async function postToAnyEndpoint({ base, paths, payload, timeoutMs }) {
   let lastErr = null;
+  const cleanBase = String(base || "").replace(/\/+$/, "");
   for (const p of paths) {
-    const url = base.replace(/\/+$/, "") + p;
+    const url = cleanBase + (p.startsWith("/") ? p : "/" + p);
     log("POST attempt:", url);
     try {
       const res = await fetchWithTimeout(
@@ -484,7 +485,8 @@ export default function App() {
 
   const runHealthCheck = useCallback(async () => {
     try {
-      const url = `${String(API_BASE || "").replace(/\/+$/, "")}/health`;
+      const base = String(API_BASE || "").replace(/\/+$/, "");
+      const url = `${base}/health`;
       const res = await fetchWithTimeout(url, {}, 8000);
       const ok = res.ok;
       setHealth({ ok, last: Date.now() });
@@ -808,21 +810,18 @@ export default function App() {
                   </button>
                 </div>
 
- <div className="cc-footer-note">
-  Powered by {CLOUD_PROVIDER_LABEL} • Matrix always included •{" "}
-  <span style={{ fontWeight: 700 }}>{remainingChars}</span> chars left
-</div>
+                <div className="cc-footer-note">
+                  Powered by {CLOUD_PROVIDER_LABEL} • Matrix always included •{" "}
+                  <span style={{ fontWeight: 700 }}>{remainingChars}</span> chars left
+                </div>
 
-<div className="cc-footer-dev">
-  Developed by Valdemir Junior
-</div>
+                <div className="cc-footer-dev">
+                  Developed by Valdemir Junior
+                </div>
 
-<div className="cc-footer-fine">
-  © 2026 HotelPlanner. All rights reserved.
-</div>
-
-
-
+                <div className="cc-footer-fine">
+                  © 2026 HotelPlanner. All rights reserved.
+                </div>
               </div>
             </div>
           </>
