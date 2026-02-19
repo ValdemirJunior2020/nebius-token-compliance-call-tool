@@ -1,31 +1,20 @@
-// server/server.js - FIX: load dotenv BEFORE any module that reads env (dynamic import)
-// + Render-friendly health/root + safer docs load + fixed timeout + Node18 fetch guard
-
+// server/server.js - Anthropic (Claude) + Excel + JSON docs + FIXED CORS + timeoutPromise
 import express from "express";
 import dotenv from "dotenv";
 import path from "path";
 import { fileURLToPath } from "url";
 import fs from "fs";
 import xlsx from "xlsx";
+import { listReviews, upsertReview } from "./lib/googleSheetsReviews.js";
 
-// -------------------- __dirname --------------------
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// -------------------- dotenv (MUST run before importing env-dependent modules) --------------------
+// ✅ Load .env from repo root if present, else fall back to server/.env
 const ROOT_ENV = path.join(__dirname, "..", ".env");
 const SERVER_ENV = path.join(__dirname, ".env");
 dotenv.config({ path: fs.existsSync(ROOT_ENV) ? ROOT_ENV : SERVER_ENV });
 
-// ✅ Guard: Render must run Node 18+ for global fetch
-if (typeof globalThis.fetch !== "function") {
-  console.error("❌ global fetch() not found. Set Node to 18+ on Render (or add node-fetch).");
-}
-
-// ✅ NOW import modules that may read process.env during module init
-const { listReviews, upsertReview } = await import("./lib/googleSheetsReviews.js");
-
-// -------------------- app --------------------
 const app = express();
 
 const PORT = Number(process.env.PORT || 5050);
@@ -47,11 +36,7 @@ let DOCUMENT_CACHE = {};
 let LAST_LOAD = 0;
 let DOCS_LOADING = false;
 
-// -------------------- CORS --------------------
-<<<<<<< HEAD
-=======
-// ✅ FIX: Clean trailing slashes properly
->>>>>>> c94ace8 (02/19/26)
+// -------------------- CORS (FIXED) --------------------
 const FRONTEND_URLS = String(
   process.env.FRONTEND_URLS ||
     process.env.FRONTEND_URL ||
@@ -71,7 +56,6 @@ const ALLOWED_ORIGINS = new Set([
   FRONTEND_URL_DEV,
   "http://localhost:5173",
   "http://localhost:3000",
-  "https://nebius-api-call-compliance-tool.netlify.app", // Added hardcoded just in case
 ]);
 
 function isNetlifySubdomain(origin) {
@@ -86,14 +70,13 @@ function isNetlifySubdomain(origin) {
 app.use((req, res, next) => {
   const origin = req.headers.origin;
 
-  // allow server-to-server, curl, Render health checks
   if (!origin) return next();
 
   const cleanOrigin = String(origin).replace(/\/+$/, "");
   const ok = ALLOWED_ORIGINS.has(cleanOrigin) || isNetlifySubdomain(cleanOrigin);
 
   if (ok) {
-    res.setHeader("Access-Control-Allow-Origin", origin); // Return exactly what they sent
+    res.setHeader("Access-Control-Allow-Origin", cleanOrigin);
     res.setHeader("Vary", "Origin");
     res.setHeader("Access-Control-Allow-Credentials", "true");
     res.setHeader("Access-Control-Allow-Methods", "GET,POST,OPTIONS");
@@ -116,13 +99,14 @@ app.use((req, res, next) => {
 // -------------------- body parser --------------------
 app.use(express.json({ limit: "2mb" }));
 
-// -------------------- Sheets env sanity (logs) --------------------
+// -------------------- Google Sheets env sanity (logs) --------------------
 const SHEETS_EMAIL = process.env.GOOGLE_SHEETS_CLIENT_EMAIL || "";
 const SHEETS_KEY_RAW = process.env.GOOGLE_SHEETS_PRIVATE_KEY || "";
 const SHEETS_SHEET_ID = process.env.GOOGLE_SHEETS_SPREADSHEET_ID || "";
 const SHEETS_TAB = process.env.GOOGLE_SHEETS_TAB_NAME || "";
 
 function sheetsKeyNormalized() {
+  // Render often stores as multiline OR with \n - normalize both
   const k = String(SHEETS_KEY_RAW || "").trim();
   if (!k) return "";
   return k.includes("\\n") ? k.replace(/\\n/g, "\n") : k;
@@ -147,12 +131,8 @@ function safeSheetsStatusLog() {
   );
 }
 
-// -------------------- Root (quick check) --------------------
-app.get("/", (req, res) => {
-  res.type("text").send("OK");
-});
-
 // -------------------- Reviews (Google Sheets) --------------------
+// Stores: call center, name, email, stars(1-5), comment + timestamps
 app.get("/api/reviews", async (req, res) => {
   try {
     const email = String(req.query.email || "").trim();
@@ -170,8 +150,10 @@ app.get("/api/reviews", async (req, res) => {
 app.post("/api/reviews/upsert", async (req, res) => {
   try {
     console.log("[REVIEWS] upsert body:", req.body);
+
     const { callCenter, name, email, stars, comment } = req.body || {};
     const out = await upsertReview({ callCenter, name, email, stars, comment });
+
     console.log("[REVIEWS] upsert result:", out.action, out.review?.reviewId);
     res.json({ ok: true, ...out });
   } catch (e) {
@@ -182,6 +164,7 @@ app.post("/api/reviews/upsert", async (req, res) => {
   }
 });
 
+// ✅ NEW: Reviews ping endpoint (you tried /api/reviews/ping)
 app.get("/api/reviews/ping", (req, res) => {
   res.json({
     ok: true,
@@ -211,9 +194,15 @@ app.get("/health", (req, res) => {
 });
 
 // -------------------- docs loading --------------------
+
+// ✅ Prefer local repo assets first (Render + local dev)
+// Repo paths:
+// - client/public/Assets/*  (source of truth)
+// - server/data/*           (fallback)
 const LOCAL_ASSETS_DIR = path.join(__dirname, "../client/public/Assets");
 const LOCAL_SERVER_DATA_DIR = path.join(__dirname, "data");
 
+// ✅ Netlify/Frontend base (only used as final fallback)
 function getDocsBase() {
   return (
     process.env.DOCS_BASE_URL ||
@@ -231,6 +220,7 @@ function existsFile(p) {
   }
 }
 
+// ✅ Resolve doc path locally first (Render-friendly)
 function resolveLocalDocPath(fileName) {
   const p1 = path.join(LOCAL_ASSETS_DIR, fileName);
   if (existsFile(p1)) return p1;
@@ -239,6 +229,56 @@ function resolveLocalDocPath(fileName) {
   if (existsFile(p2)) return p2;
 
   return null;
+}
+
+async function fetchExcelDocument(docName, fileName) {
+  // ✅ 1) LOCAL FIRST
+  const localPath = resolveLocalDocPath(fileName);
+  if (localPath) {
+    log(`Loading ${docName} from local: ${localPath}`);
+    const workbook = xlsx.readFile(localPath);
+    return parseWorkbook(workbook, docName);
+  }
+
+  // ✅ 2) REMOTE FALLBACK (Netlify/Frontend)
+  const docsBase = getDocsBase();
+  const netlifyUrl = `${String(docsBase).replace(/\/+$/, "")}/Assets/${encodeURIComponent(
+    fileName
+  )}`;
+  log(`Fetching ${docName} from remote: ${netlifyUrl}`);
+
+  const response = await fetch(netlifyUrl, { cache: "no-store" });
+  if (!response.ok) throw new Error(`HTTP ${response.status} fetching ${netlifyUrl}`);
+
+  const buffer = Buffer.from(await response.arrayBuffer());
+  const workbook = xlsx.read(buffer, { type: "buffer" });
+  return parseWorkbook(workbook, docName);
+}
+
+async function fetchJsonDocument(docName, fileName) {
+  // ✅ 1) LOCAL FIRST
+  const localPath = resolveLocalDocPath(fileName);
+  if (localPath) {
+    log(`Loading ${docName} from local: ${localPath}`);
+    const raw = fs.readFileSync(localPath, "utf-8");
+    const json = JSON.parse(raw);
+    log(`✅ Parsed ${docName}: JSON keys=${Object.keys(json || {}).length}`);
+    return json;
+  }
+
+  // ✅ 2) REMOTE FALLBACK (Netlify/Frontend)
+  const docsBase = getDocsBase();
+  const netlifyUrl = `${String(docsBase).replace(/\/+$/, "")}/Assets/${encodeURIComponent(
+    fileName
+  )}`;
+  log(`Fetching ${docName} from remote: ${netlifyUrl}`);
+
+  const response = await fetch(netlifyUrl, { cache: "no-store" });
+  if (!response.ok) throw new Error(`HTTP ${response.status} fetching ${netlifyUrl}`);
+
+  const json = await response.json();
+  log(`✅ Parsed ${docName}: JSON keys=${Object.keys(json || {}).length}`);
+  return json;
 }
 
 function parseWorkbook(workbook, docName) {
@@ -251,81 +291,17 @@ function parseWorkbook(workbook, docName) {
   return result;
 }
 
-async function fetchExcelDocument(docName, fileName) {
-  const localPath = resolveLocalDocPath(fileName);
-  if (localPath) {
-    log(`Loading ${docName} from local: ${localPath}`);
-    const workbook = xlsx.readFile(localPath);
-    return parseWorkbook(workbook, docName);
-  }
-
-  const docsBase = getDocsBase();
-<<<<<<< HEAD
-  const netlifyUrl = `${String(docsBase).replace(/\/+$/, "")}/Assets/${encodeURIComponent(
-    fileName
-  )}`;
-=======
-  // ✅ FIX: Using encodeURI handles the apostrophe natively without crashing Netlify URLs
-  const netlifyUrl = `${String(docsBase).replace(/\/+$/, "")}/Assets/${encodeURI(fileName)}`;
->>>>>>> c94ace8 (02/19/26)
-
-  log(`Fetching ${docName} from remote: ${netlifyUrl}`);
-  const response = await fetch(netlifyUrl, { cache: "no-store" });
-  if (!response.ok) throw new Error(`HTTP ${response.status} fetching ${netlifyUrl}`);
-
-  const buffer = Buffer.from(await response.arrayBuffer());
-  const workbook = xlsx.read(buffer, { type: "buffer" });
-  return parseWorkbook(workbook, docName);
-}
-
-async function fetchJsonDocument(docName, fileName) {
-  const localPath = resolveLocalDocPath(fileName);
-  if (localPath) {
-    log(`Loading ${docName} from local: ${localPath}`);
-    const raw = fs.readFileSync(localPath, "utf-8");
-    const json = JSON.parse(raw);
-    log(`✅ Parsed ${docName}: JSON keys=${Object.keys(json || {}).length}`);
-    return json;
-  }
-
-  const docsBase = getDocsBase();
-<<<<<<< HEAD
-  const netlifyUrl = `${String(docsBase).replace(/\/+$/, "")}/Assets/${encodeURIComponent(
-    fileName
-  )}`;
-=======
-  // ✅ FIX: Using encodeURI handles characters correctly
-  const netlifyUrl = `${String(docsBase).replace(/\/+$/, "")}/Assets/${encodeURI(fileName)}`;
->>>>>>> c94ace8 (02/19/26)
-
-  log(`Fetching ${docName} from remote: ${netlifyUrl}`);
-  const response = await fetch(netlifyUrl, { cache: "no-store" });
-  if (!response.ok) throw new Error(`HTTP ${response.status} fetching ${netlifyUrl}`);
-
-  const json = await response.json();
-  log(`✅ Parsed ${docName}: JSON keys=${Object.keys(json || {}).length}`);
-  return json;
-}
-
 async function loadDocuments(force = false) {
   if (DOCS_LOADING) return;
   if (Object.keys(DOCUMENT_CACHE).length > 0 && !force) return;
 
   DOCS_LOADING = true;
 
-  // ⚠️ Strong recommendation: rename your matrix file to avoid apostrophe on Linux:
-  // "Service_Matrix_2026.xlsx"
-  // and update below.
   const docs = [
     { key: "qaVoice", file: "qa-voice.xlsx", name: "QA Voice", kind: "excel" },
     { key: "qaGroup", file: "qa-group.xlsx", name: "QA Groups", kind: "excel" },
     { key: "matrix", file: "Service Matrix's 2026.xlsx", name: "Service Matrix", kind: "excel" },
-    {
-      key: "trainingGuide",
-      file: "hotelplanner_training_guide.json",
-      name: "Training Guide",
-      kind: "json",
-    },
+    { key: "trainingGuide", file: "hotelplanner_training_guide.json", name: "Training Guide", kind: "json" },
     { key: "rppGuide", file: "rpp_protection_guide.json", name: "RPP Protection Guide", kind: "json" },
   ];
 
@@ -356,13 +332,16 @@ function buildContext(docsSelection) {
   const parts = [];
   const MAX_CHARS = 6000;
 
+  // ✅ Matrix ALWAYS included
+  const wantMatrix = true;
+
   if (docsSelection.qaVoice && DOCUMENT_CACHE.qaVoice) {
     parts.push(`QA VOICE RUBRIC:\n${JSON.stringify(DOCUMENT_CACHE.qaVoice).slice(0, MAX_CHARS)}`);
   }
   if (docsSelection.qaGroup && DOCUMENT_CACHE.qaGroup) {
     parts.push(`QA GROUPS RUBRIC:\n${JSON.stringify(DOCUMENT_CACHE.qaGroup).slice(0, MAX_CHARS)}`);
   }
-  if (DOCUMENT_CACHE.matrix) {
+  if (wantMatrix && DOCUMENT_CACHE.matrix) {
     parts.push(`SERVICE MATRIX 2026:\n${JSON.stringify(DOCUMENT_CACHE.matrix).slice(0, MAX_CHARS)}`);
   }
   if (docsSelection.trainingGuide && DOCUMENT_CACHE.trainingGuide) {
@@ -458,11 +437,12 @@ async function callAnthropic(question, systemPrompt) {
 // -------------------- main handler --------------------
 async function handleAsk(req, res) {
   const reqId = `req_${Date.now()}`;
-  const { question, mode = "cloud", docs = {} } = req.body || {};
+  const { question, mode = "cloud", docs = {} } = req.body;
 
   log(`[${reqId}] Question: ${String(question || "").slice(0, 120)}...`);
   if (!question) return res.status(400).json({ ok: false, error: "Missing question" });
 
+  // ✅ If docs aren't loaded yet, kick a load and proceed when ready
   if (Object.keys(DOCUMENT_CACHE).length === 0 && !DOCS_LOADING) {
     loadDocuments().catch((e) => errlog("docs load error:", e?.message || e));
   }
@@ -555,9 +535,8 @@ Now answer the user question using the rules above.
         throw new Error(`Unknown provider: ${AI_PROVIDER}`);
     }
 
-    const timeoutMs = Number(process.env.ASK_TIMEOUT_MS || 55000);
     const timeoutPromise = new Promise((_, reject) =>
-      setTimeout(() => reject(Object.assign(new Error("Request timeout"), { status: 504 })), timeoutMs)
+      setTimeout(() => reject(Object.assign(new Error("Request timeout"), { status: 504 })), 55000)
     );
 
     const answer = await Promise.race([apiPromise, timeoutPromise]);
@@ -599,7 +578,7 @@ app.use((req, res) => {
   res.status(404).json({
     ok: false,
     error: "Not found",
-    endpoints: ["/", "/health", "/api/claude", "/api/reviews", "/api/reviews/upsert", "/api/reviews/ping"],
+    endpoints: ["/health", "/api/claude", "/api/reviews", "/api/reviews/upsert", "/api/reviews/ping"],
     provider: AI_PROVIDER,
   });
 });
@@ -613,6 +592,7 @@ app.listen(PORT, () => {
   console.log(`🔑 Anthropic: ${ANTHROPIC_API_KEY ? "✅" : "❌"}`);
   safeSheetsStatusLog();
 
+  // ✅ Background preload (non-blocking)
   console.log("⏳ Loading documents (background)...");
   loadDocuments().catch((e) => errlog("docs load error:", e?.message || e));
 });

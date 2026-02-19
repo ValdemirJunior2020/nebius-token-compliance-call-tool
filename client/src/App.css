@@ -968,3 +968,39 @@ text-shadow:
   margin-top: 6px;
   line-height: 1.2;
 }
+/* ====== Tighten up the container ====== */
+.cc-footer-inner {
+  max-width: 780px;
+  margin: 0 auto;
+  padding: 8px 12px; /* Reduced padding */
+  display: flex;
+  flex-direction: column;
+  gap: 6px; /* Reduced gap between input and text */
+}
+
+/* ====== Make ALL footer lines small + consistent ====== */
+.cc-footer-note {
+  font-size: 11px;
+  color: rgba(17, 24, 39, 0.55);
+  text-align: center;
+  margin-top: 2px; /* Tightened */
+  line-height: 1.2;
+}
+
+.cc-footer-dev {
+  font-size: 11px;
+  color: rgba(17, 24, 39, 0.45);
+  text-align: center;
+  font-weight: 600;
+  margin-top: 0px; /* Removed extra margin */
+  line-height: 1.2;
+}
+
+.cc-footer-fine {
+  font-size: 10px !important; /* Made copyright slightly smaller */
+  color: rgba(17, 24, 39, 0.35) !important;
+  text-align: center;
+  font-weight: 500 !important;
+  margin-top: 0px; /* Removed extra margin */
+  line-height: 1.2;
+}
