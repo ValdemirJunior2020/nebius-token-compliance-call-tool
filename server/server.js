@@ -1,10 +1,11 @@
-// server/server.js - Anthropic (Claude) + Excel + JSON docs + FIXED CORS + timeoutPromise
+// server/server.js - Anthropic (Claude) + Excel/JSON docs + Google Sheet Matrix + FIXED CORS + timeoutPromise
 import express from "express";
 import dotenv from "dotenv";
 import path from "path";
 import { fileURLToPath } from "url";
 import fs from "fs";
 import xlsx from "xlsx";
+import { google } from "googleapis";
 import { listReviews, upsertReview } from "./lib/googleSheetsReviews.js";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -105,6 +106,12 @@ const SHEETS_KEY_RAW = process.env.GOOGLE_SHEETS_PRIVATE_KEY || "";
 const SHEETS_SHEET_ID = process.env.GOOGLE_SHEETS_SPREADSHEET_ID || "";
 const SHEETS_TAB = process.env.GOOGLE_SHEETS_TAB_NAME || "";
 
+// ✅ Matrix source (Google Sheet) - separate from reviews sheet if you want
+// If not set, it falls back to local Excel file.
+const MATRIX_SHEET_ID = process.env.MATRIX_GOOGLE_SHEET_ID || "";
+const MATRIX_TAB = process.env.MATRIX_GOOGLE_SHEET_TAB || "";
+const MATRIX_RANGE = process.env.MATRIX_GOOGLE_SHEET_RANGE || ""; // optional, e.g. "A:ZZ"
+
 function sheetsKeyNormalized() {
   // Render often stores as multiline OR with \n - normalize both
   const k = String(SHEETS_KEY_RAW || "").trim();
@@ -119,6 +126,8 @@ function sheetsConfigured() {
     key: !!key,
     sheetId: !!SHEETS_SHEET_ID,
     tab: !!SHEETS_TAB,
+    matrixSheetId: !!MATRIX_SHEET_ID,
+    matrixTab: !!MATRIX_TAB,
   };
 }
 
@@ -127,8 +136,45 @@ function safeSheetsStatusLog() {
   console.log(
     `🧾 Sheets: email=${sc.email ? "✅" : "❌"} key=${sc.key ? "✅" : "❌"} sheetId=${
       sc.sheetId ? "✅" : "❌"
-    } tab=${sc.tab ? "✅" : "❌"}`
+    } tab=${sc.tab ? "✅" : "❌"} matrixSheet=${sc.matrixSheetId ? "✅" : "❌"} matrixTab=${
+      sc.matrixTab ? "✅" : "❌"
+    }`
   );
+}
+
+function getGoogleSheetsClient() {
+  if (!SHEETS_EMAIL || !sheetsKeyNormalized()) {
+    throw new Error("Google Sheets credentials missing (GOOGLE_SHEETS_CLIENT_EMAIL / GOOGLE_SHEETS_PRIVATE_KEY)");
+  }
+
+  const auth = new google.auth.JWT({
+    email: SHEETS_EMAIL,
+    key: sheetsKeyNormalized(),
+    scopes: ["https://www.googleapis.com/auth/spreadsheets.readonly"],
+  });
+
+  return google.sheets({ version: "v4", auth });
+}
+
+function matrixGoogleConfigured() {
+  return !!(MATRIX_SHEET_ID && MATRIX_TAB && SHEETS_EMAIL && sheetsKeyNormalized());
+}
+
+async function fetchMatrixFromGoogleSheet() {
+  const sheets = getGoogleSheetsClient();
+  const range = MATRIX_RANGE ? `${MATRIX_TAB}!${MATRIX_RANGE}` : `${MATRIX_TAB}!A:ZZ`;
+  log(`Loading Service Matrix from Google Sheet: ${MATRIX_SHEET_ID} / ${range}`);
+
+  const res = await sheets.spreadsheets.values.get({
+    spreadsheetId: MATRIX_SHEET_ID,
+    range,
+  });
+
+  const values = res.data.values || [];
+  log(`✅ Parsed Service Matrix (Google Sheet): ${MATRIX_TAB} rows=${values.length}`);
+
+  // keep same shape as parseWorkbook() result => { [sheetName]: rows[][] }
+  return { [MATRIX_TAB]: values };
 }
 
 // -------------------- Reviews (Google Sheets) --------------------
@@ -173,6 +219,18 @@ app.get("/api/reviews/ping", (req, res) => {
   });
 });
 
+// ✅ NEW: Matrix ping endpoint (helps verify Google Sheet matrix is connected)
+app.get("/api/matrix/ping", (req, res) => {
+  res.json({
+    ok: true,
+    matrixGoogleConfigured: matrixGoogleConfigured(),
+    matrixSheetIdSet: !!MATRIX_SHEET_ID,
+    matrixTabSet: !!MATRIX_TAB,
+    matrixTab: MATRIX_TAB || null,
+    ts: new Date().toISOString(),
+  });
+});
+
 // -------------------- health --------------------
 app.get("/health", (req, res) => {
   res.json({
@@ -187,6 +245,7 @@ app.get("/health", (req, res) => {
       cached: Object.keys(DOCUMENT_CACHE),
       lastLoad: LAST_LOAD ? new Date(LAST_LOAD).toISOString() : null,
       loading: DOCS_LOADING,
+      matrixSource: DOCUMENT_CACHE.__meta?.matrixSource || null,
     },
     frontendAllowed: Array.from(ALLOWED_ORIGINS),
     ts: new Date().toISOString(),
@@ -297,40 +356,140 @@ async function loadDocuments(force = false) {
 
   DOCS_LOADING = true;
 
+  // reset cache when forced
+  if (force) DOCUMENT_CACHE = {};
+
   const docs = [
     { key: "qaVoice", file: "qa-voice.xlsx", name: "QA Voice", kind: "excel" },
     { key: "qaGroup", file: "qa-group.xlsx", name: "QA Groups", kind: "excel" },
-    { key: "matrix", file: "Service Matrix's 2026 Voice and Tickets.xlsx", name: "Service Matrix", kind: "excel" },
-    { key: "trainingGuide", file: "hotelplanner_training_guide.json", name: "Training Guide", kind: "json" },
-    { key: "rppGuide", file: "rpp_protection_guide.json", name: "RPP Protection Guide", kind: "json" },
+    { key: "matrix", file: "Service Matrix's 2026.xlsx", name: "Service Matrix", kind: "excel" },
+    {
+      key: "trainingGuide",
+      file: "hotelplanner_training_guide.json",
+      name: "Training Guide",
+      kind: "json",
+    },
+    {
+      key: "rppGuide",
+      file: "rpp_protection_guide.json",
+      name: "RPP Protection Guide",
+      kind: "json",
+    },
   ];
 
   const summary = [];
-  for (const doc of docs) {
-    const t0 = Date.now();
-    try {
-      DOCUMENT_CACHE[doc.key] =
-        doc.kind === "json"
-          ? await fetchJsonDocument(doc.name, doc.file)
-          : await fetchExcelDocument(doc.name, doc.file);
-      summary.push(`✅ ${doc.name} (${doc.file}) in ${Date.now() - t0}ms`);
-    } catch (e) {
-      errlog(`❌ Failed to load ${doc.name}:`, e.message);
-      summary.push(`❌ ${doc.name} (${doc.file}) -> ${e.message}`);
-    }
-  }
+  try {
+    for (const doc of docs) {
+      const t0 = Date.now();
+      try {
+        if (doc.key === "matrix" && matrixGoogleConfigured()) {
+          DOCUMENT_CACHE[doc.key] = await fetchMatrixFromGoogleSheet();
+          DOCUMENT_CACHE.__meta = {
+            ...(DOCUMENT_CACHE.__meta || {}),
+            matrixSource: "google-sheet",
+            matrixSheetId: MATRIX_SHEET_ID,
+            matrixTab: MATRIX_TAB,
+          };
+          summary.push(`✅ ${doc.name} (GoogleSheet:${MATRIX_TAB}) in ${Date.now() - t0}ms`);
+        } else {
+          DOCUMENT_CACHE[doc.key] =
+            doc.kind === "json"
+              ? await fetchJsonDocument(doc.name, doc.file)
+              : await fetchExcelDocument(doc.name, doc.file);
 
-  LAST_LOAD = Date.now();
-  DOCS_LOADING = false;
+          if (doc.key === "matrix") {
+            DOCUMENT_CACHE.__meta = {
+              ...(DOCUMENT_CACHE.__meta || {}),
+              matrixSource: "excel-file",
+              matrixFile: doc.file,
+            };
+          }
+
+          summary.push(`✅ ${doc.name} (${doc.file}) in ${Date.now() - t0}ms`);
+        }
+      } catch (e) {
+        const msg = e?.message || String(e);
+        errlog(`❌ Failed to load ${doc.name}:`, msg);
+        summary.push(`❌ ${doc.name} (${doc.file}) -> ${msg}`);
+      }
+    }
+  } finally {
+    LAST_LOAD = Date.now();
+    DOCS_LOADING = false;
+  }
 
   console.log("📚 Document load summary:\n" + summary.join("\n"));
   console.log(`📦 Cached docs: ${Object.keys(DOCUMENT_CACHE).join(", ") || "(none)"}`);
+  console.log(
+    `📌 Matrix source: ${DOCUMENT_CACHE.__meta?.matrixSource || "unknown"}${
+      DOCUMENT_CACHE.__meta?.matrixTab ? ` (${DOCUMENT_CACHE.__meta.matrixTab})` : ""
+    }`
+  );
   console.log("✅ Documents load finished.");
 }
 
-function buildContext(docsSelection) {
+function extractRelevantMatrixRows(matrixDoc, question = "") {
+  try {
+    const q = String(question || "").toLowerCase().trim();
+
+    const seedKeywords = [
+      "shuttle",
+      "uber",
+      "lyft",
+      "transport",
+      "transportation",
+      "airport",
+      "ride",
+      "taxi",
+    ];
+
+    const questionWords = q
+      .replace(/[^a-z0-9\s]/g, " ")
+      .split(/\s+/)
+      .filter(Boolean)
+      .filter((w) => w.length >= 4);
+
+    const keywords = Array.from(new Set([...seedKeywords, ...questionWords]));
+    const matches = [];
+
+    for (const [sheetName, rows] of Object.entries(matrixDoc || {})) {
+      if (sheetName === "__meta") continue;
+      if (!Array.isArray(rows)) continue;
+
+      rows.forEach((row, idx) => {
+        const rowArr = Array.isArray(row) ? row : [row];
+        const line = rowArr.map((v) => String(v ?? "")).join(" | ");
+        const lower = line.toLowerCase();
+
+        if (!lower.trim()) return;
+
+        if (keywords.some((k) => lower.includes(k))) {
+          matches.push({
+            sheetName,
+            rowNumber: idx + 1,
+            row: rowArr,
+          });
+        }
+      });
+    }
+
+    if (!matches.length) {
+      // fallback if no keyword hit
+      return JSON.stringify(matrixDoc).slice(0, 30000);
+    }
+
+    return matches
+      .slice(0, 60)
+      .map((m) => `[Sheet: ${m.sheetName} | Row: ${m.rowNumber}] ${JSON.stringify(m.row)}`)
+      .join("\n");
+  } catch (e) {
+    return `NOT FOUND IN DOCS (matrix parse error: ${e.message})`;
+  }
+}
+
+function buildContext(docsSelection, question = "") {
   const parts = [];
-  const MAX_CHARS = 6000;
+  const MAX_CHARS = 12000;
 
   // ✅ Matrix ALWAYS included
   const wantMatrix = true;
@@ -342,7 +501,7 @@ function buildContext(docsSelection) {
     parts.push(`QA GROUPS RUBRIC:\n${JSON.stringify(DOCUMENT_CACHE.qaGroup).slice(0, MAX_CHARS)}`);
   }
   if (wantMatrix && DOCUMENT_CACHE.matrix) {
-    parts.push(`SERVICE MATRIX 2026:\n${JSON.stringify(DOCUMENT_CACHE.matrix).slice(0, MAX_CHARS)}`);
+    parts.push(`SERVICE MATRIX 2026:\n${extractRelevantMatrixRows(DOCUMENT_CACHE.matrix, question)}`);
   }
   if (docsSelection.trainingGuide && DOCUMENT_CACHE.trainingGuide) {
     parts.push(
@@ -437,14 +596,14 @@ async function callAnthropic(question, systemPrompt) {
 // -------------------- main handler --------------------
 async function handleAsk(req, res) {
   const reqId = `req_${Date.now()}`;
-  const { question, mode = "cloud", docs = {} } = req.body;
+  const { question, mode = "cloud", docs = {} } = req.body || {};
 
   log(`[${reqId}] Question: ${String(question || "").slice(0, 120)}...`);
   if (!question) return res.status(400).json({ ok: false, error: "Missing question" });
 
-  // ✅ If docs aren't loaded yet, kick a load and proceed when ready
-  if (Object.keys(DOCUMENT_CACHE).length === 0 && !DOCS_LOADING) {
-    loadDocuments().catch((e) => errlog("docs load error:", e?.message || e));
+  // ✅ IMPORTANT: wait for docs before answering (fixes empty context on first request)
+  if (Object.keys(DOCUMENT_CACHE).length === 0) {
+    await loadDocuments();
   }
 
   if (mode === "local") {
@@ -469,7 +628,7 @@ async function handleAsk(req, res) {
   }
 
   try {
-    const context = buildContext(docs);
+    const context = buildContext(docs, question);
 
     const systemPrompt = `
 You are "QA Master" — the strictest, smartest HotelPlanner Call Center Quality & Compliance Analyst.
@@ -578,7 +737,14 @@ app.use((req, res) => {
   res.status(404).json({
     ok: false,
     error: "Not found",
-    endpoints: ["/health", "/api/claude", "/api/reviews", "/api/reviews/upsert", "/api/reviews/ping"],
+    endpoints: [
+      "/health",
+      "/api/claude",
+      "/api/reviews",
+      "/api/reviews/upsert",
+      "/api/reviews/ping",
+      "/api/matrix/ping",
+    ],
     provider: AI_PROVIDER,
   });
 });
