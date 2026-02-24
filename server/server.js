@@ -349,9 +349,14 @@ function parseWorkbook(workbook, docName) {
   log(`✅ Parsed ${docName}: ${workbook.SheetNames.length} sheets`);
   return result;
 }
-
 async function loadDocuments(force = false) {
-  if (DOCS_LOADING) return;
+  if (DOCS_LOADING) {
+    while (DOCS_LOADING) {
+      await new Promise((r) => setTimeout(r, 50));
+    }
+    return;
+  }
+
   if (Object.keys(DOCUMENT_CACHE).length > 0 && !force) return;
 
   DOCS_LOADING = true;
