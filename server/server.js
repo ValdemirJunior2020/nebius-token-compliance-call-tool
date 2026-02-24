@@ -300,7 +300,7 @@ async function loadDocuments(force = false) {
   const docs = [
     { key: "qaVoice", file: "qa-voice.xlsx", name: "QA Voice", kind: "excel" },
     { key: "qaGroup", file: "qa-group.xlsx", name: "QA Groups", kind: "excel" },
-    { key: "matrix", file: "Service Matrix's 2026.xlsx", name: "Service Matrix", kind: "excel" },
+    { key: "matrix", file: "Service Matrix's 2026 Voice and Tickets.xlsx", name: "Service Matrix", kind: "excel" },
     { key: "trainingGuide", file: "hotelplanner_training_guide.json", name: "Training Guide", kind: "json" },
     { key: "rppGuide", file: "rpp_protection_guide.json", name: "RPP Protection Guide", kind: "json" },
   ];
