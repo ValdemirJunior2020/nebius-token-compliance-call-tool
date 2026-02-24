@@ -10,7 +10,19 @@ const API_BASE = "https://nebius-token-compliance-call-tool.onrender.com";
 // ✅ UI label for your cloud model (you are using Claude)
 const CLOUD_PROVIDER_LABEL = "Claude";
 
-// ✅ FUNNY RANDOM LOADING TEXTS (added — does not change your original logic)
+// ✅ INPUT LIMIT (saves money by preventing huge prompts)
+const MAX_USER_INPUT_CHARS = 1200;
+
+// public assets
+const LOADING_GIF_SRC = "/loading.gif";
+const NAV_LOGO_VIDEO_SRC = "/Video_Generation_Confirmation.mp4";
+const ERROR_VIDEO_SRC = "/error.mp4";
+
+// ✅ NEW: "server waking up" GIF when Render sleeps / timeout happens
+const SERVER_WAKING_GIF =
+  "https://media2.giphy.com/media/v1.Y2lkPTc5MGI3NjExYjRuYTh2YzM1enRpbGQ4NXpzaXczcW4xaHM1bml5am9qZ3JlOGEwbSZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/akFJm2F10JBZnFb7xW/giphy.gif";
+
+// ✅ FUNNY RANDOM LOADING TEXTS
 const FUNNY_LOADING_LINES = [
   `Analyzing with ${CLOUD_PROVIDER_LABEL}… (bribing the electrons) 🤖⚡`,
   `Analyzing with ${CLOUD_PROVIDER_LABEL}… (asking the matrix nicely) 🧠📊`,
@@ -30,14 +42,6 @@ function pickFunnyLoadingLine() {
   return FUNNY_LOADING_LINES[Math.floor(Math.random() * FUNNY_LOADING_LINES.length)];
 }
 
-// ✅ INPUT LIMIT (saves money by preventing huge prompts)
-const MAX_USER_INPUT_CHARS = 1200;
-
-// public assets
-const LOADING_GIF_SRC = "/loading.gif";
-const NAV_LOGO_VIDEO_SRC = "/Video_Generation_Confirmation.mp4";
-const ERROR_VIDEO_SRC = "/error.mp4";
-
 // ✅ IMPORTANT: all compliance docs are under /public/Assets
 const ASSETS_BASE = "/Assets";
 
@@ -55,9 +59,8 @@ const TRAINING_GUIDE_JSON_PATH = `${ASSETS_BASE}/hotelplanner_training_guide.jso
 const RPP_PROTECTION_GUIDE_JSON_PATH = `${ASSETS_BASE}/rpp_protection_guide.json`;
 
 // --- QA Master Intro (fixed text) --------------------------------------------
-const QA_MASTER_INTRO = `I’m ready to assist as your QA 💖
-Share the guest situation or agent question, and I’ll give you the exact compliant procedure—clear, step-by-step, and perfectly on script.
-`;
+const QA_MASTER_INTRO = `I’m here to support your QA needs.
+Share the guest issue or agent question, and I’ll provide the correct compliant procedure—clear, concise, and on script.`;
 
 // --- logging ----------------------------------------------------------------
 const DEBUG = true;
@@ -326,6 +329,15 @@ Fix:
 `);
 }
 
+// ✅ NEW: detect “Render sleeping / waking” based on timeout / gateway / long-wait network errors
+function isServerWakingUpError(e) {
+  const status = Number(e?.status || 0);
+  if (status === 502 || status === 503 || status === 504) return true; // common during wake/cold-start
+  if (isAbort(e)) return true; // frontend timeout
+  const msg = String(e?.message || "").toLowerCase();
+  return msg.includes("network") || msg.includes("failed to fetch") || msg.includes("load failed");
+}
+
 function MessageBubble({ m, isIntro }) {
   const isUser = m.role === "user";
   const isAssistant = m.role === "assistant";
@@ -345,7 +357,7 @@ function MessageBubble({ m, isIntro }) {
           <div className="cc-loadingWrap">
             <img
               className="cc-loadingGif"
-              src={LOADING_GIF_SRC}
+              src={m.loadingGif || LOADING_GIF_SRC}
               alt="loading"
               onError={(e) => {
                 e.currentTarget.src = "https://media.tenor.com/e_E1hMZnbdAAAAAi/meme-coffee.gif";
@@ -625,7 +637,17 @@ export default function App() {
       errlog("send() error:", e);
       const status = e?.status;
 
-      if (status === 401) {
+      // ✅ NEW: Render sleeping / cold start message with your GIF
+      if (isServerWakingUpError(e)) {
+        replaceLastAssistant({
+          kind: "loading",
+          text: "",
+          thinkingText: "Server is waking up… just a second 😴➡️⚡",
+          loadingGif: SERVER_WAKING_GIF,
+          ts: Date.now(),
+        });
+        setBanner({ type: "error", title: "😴 Server waking up", sub: "Render was sleeping. Try again in a moment." });
+      } else if (status === 401) {
         replaceLastAssistant({ kind: "error401", text: normalizeWs(e?.message), ts: Date.now() });
       } else if (status === 404) {
         const friendly404 = build404Message({ apiBase: API_BASE, attemptedPath: e?.path });
