@@ -10,6 +10,26 @@ const API_BASE = "https://nebius-token-compliance-call-tool.onrender.com";
 // ✅ UI label for your cloud model (you are using Claude)
 const CLOUD_PROVIDER_LABEL = "Claude";
 
+// ✅ FUNNY RANDOM LOADING TEXTS (added — does not change your original logic)
+const FUNNY_LOADING_LINES = [
+  `Analyzing with ${CLOUD_PROVIDER_LABEL}… (bribing the electrons) 🤖⚡`,
+  `Analyzing with ${CLOUD_PROVIDER_LABEL}… (asking the matrix nicely) 🧠📊`,
+  `Analyzing with ${CLOUD_PROVIDER_LABEL}… (summoning QA angels) 😇✅`,
+  `Analyzing with ${CLOUD_PROVIDER_LABEL}… (counting pixels and policies) 🧾🔍`,
+  `Analyzing with ${CLOUD_PROVIDER_LABEL}… (making coffee for the API) ☕🛰️`,
+  `Analyzing with ${CLOUD_PROVIDER_LABEL}… (petting the server hamster) 🐹💾`,
+  `Analyzing with ${CLOUD_PROVIDER_LABEL}… (this is definitely not magic) 🪄😅`,
+  `Analyzing with ${CLOUD_PROVIDER_LABEL}… (loading wisdom… 99%… still loading) ⏳🧠`,
+  `Analyzing with ${CLOUD_PROVIDER_LABEL}… (calibrating the calibration) 🎛️✅`,
+  `Analyzing with ${CLOUD_PROVIDER_LABEL}… (reading the fine print… again) 🧐📄`,
+  `Analyzing with ${CLOUD_PROVIDER_LABEL}… (doing math… voluntarily) 🧮😵`,
+  `Analyzing with ${CLOUD_PROVIDER_LABEL}…`,
+];
+
+function pickFunnyLoadingLine() {
+  return FUNNY_LOADING_LINES[Math.floor(Math.random() * FUNNY_LOADING_LINES.length)];
+}
+
 // ✅ INPUT LIMIT (saves money by preventing huge prompts)
 const MAX_USER_INPUT_CHARS = 1200;
 
@@ -576,7 +596,7 @@ export default function App() {
     setIsSending(true);
 
     addMessage({ id: genId(), role: "user", text: question, ts: Date.now() });
-    addMessage({ id: genId(), role: "assistant", kind: "loading", text: "", thinkingText: `Analyzing with ${CLOUD_PROVIDER_LABEL}…`, ts: Date.now() });
+    addMessage({ id: genId(), role: "assistant", kind: "loading", text: "", thinkingText: pickFunnyLoadingLine(), ts: Date.now() });
     setInput("");
 
     const payload = buildPayload({
@@ -811,17 +831,12 @@ export default function App() {
                 </div>
 
                 <div className="cc-footer-note">
-                  Powered by {CLOUD_PROVIDER_LABEL} • Matrix always included •{" "}
-                  <span style={{ fontWeight: 700 }}>{remainingChars}</span> chars left
+                  Powered by {CLOUD_PROVIDER_LABEL} • Matrix always included • <span style={{ fontWeight: 700 }}>{remainingChars}</span> chars left
                 </div>
 
-                <div className="cc-footer-dev">
-                  Developed by Valdemir Junior
-                </div>
+                <div className="cc-footer-dev">Developed by Valdemir Junior</div>
 
-                <div className="cc-footer-fine">
-                  © 2026 HotelPlanner. All rights reserved.
-                </div>
+                <div className="cc-footer-fine">© 2026 HotelPlanner. All rights reserved.</div>
               </div>
             </div>
           </>
